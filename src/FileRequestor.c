@@ -37,7 +37,7 @@ static int FileRequestor_open_control( struct FileRequestor *r ) {
 int FileRequestor_parse_result( const char *result, char *outfilename, int outfilenamelength ) {
   char format[128];
   
-  sprintf( format, "OK \"%%%d[^\\\r\n\"]\"", outfilenamelength-1 );
+  sprintf( format, "OK-ALIAS \"%%%d[^\\\r\n\"]\"", outfilenamelength-1 );
   if( sscanf(result, format, outfilename) ) {
     if( strlen(outfilename) == outfilenamelength-1 ) {
       return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
