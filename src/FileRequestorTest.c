@@ -2,16 +2,21 @@
 #include "FileRequestor.h"
 
 int main( int argc, char **argv ) {
-  char buffer[24];
+  char buffer[23];
   int z;
   
-  if( sizeof buffer != 24 ) {
-    errx( 1, "Expected sizeof buffer to be %d, but was %d", 24, sizeof buffer );
+  if( sizeof buffer != 23 ) {
+    errx( 1, "Expected sizeof buffer to be %d, but was %d", 23, sizeof buffer );
   }
 
   z = FileRequestor_parse_result( "OK-ALIAS \"/home/junk/chambawamba\"", buffer, sizeof buffer );
   if( z != FILEREQUESTOR_RESULT_OK ) {
     errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
+  }
+
+  z = FileRequestor_parse_result( "OK-ALIAS \"/home/junk/chambawamba\" crumb", buffer, sizeof buffer );
+  if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
   }
 
   z = FileRequestor_parse_result( "OK-ALIAS \"/home/junk/chambawamba\"", buffer, sizeof buffer - 1 );
@@ -35,6 +40,11 @@ int main( int argc, char **argv ) {
   }
   
   z = FileRequestor_parse_result( "SERVER-ERROR \"askldmnaisd message asdnasndiunkjded\"", buffer, 22 );
+  if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
+  }
+  
+  z = FileRequestor_parse_result( "", buffer, 22 );
   if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
     errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
   }

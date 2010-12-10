@@ -6,9 +6,9 @@ build/Tokenizer.o: src/Tokenizer.c src/Tokenizer.h
 	mkdir -p build
 	gcc -c -o build/Tokenizer.o src/Tokenizer.c
 
-build/FileRequestorTest: build/FileRequestor.o src/FileRequestor.c
+build/FileRequestorTest: build/FileRequestor.o build/Tokenizer.o src/FileRequestorTest.c
 	mkdir -p build
-	gcc -o build/FileRequestorTest src/FileRequestorTest.c build/FileRequestor.o
+	gcc -o build/FileRequestorTest src/FileRequestorTest.c build/FileRequestor.o build/Tokenizer.o
 
 build/TokenizerTest: build/Tokenizer.o src/TokenizerTest.c
 	mkdir -p build

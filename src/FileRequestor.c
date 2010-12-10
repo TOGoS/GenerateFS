@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "FileRequestor.h"
+#include "Tokenizer.h"
 
 int FileRequestor_init( struct FileRequestor *r, const char *hostname, short int port ) {
   r->hostname = hostname;
@@ -36,17 +37,25 @@ static int FileRequestor_open_control( struct FileRequestor *r ) {
 
 int FileRequestor_parse_result( const char *result, char *outfilename, int outfilenamelength ) {
   char format[128];
+  int z;
+  struct TokenList rts;
   
-  sprintf( format, "OK-ALIAS \"%%%d[^\\\r\n\"]\"", outfilenamelength-1 );
-  if( sscanf(result, format, outfilename) ) {
-    if( strlen(outfilename) == outfilenamelength-1 ) {
+  z = Tokenizer_tokenize( result, &rts );
+  if( z != 0 ) return z;
+  if( rts.token_count == 0 ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+  }
+  
+  if( rts.token_count == 2 && strcmp("OK-ALIAS",rts.tokens[0]) == 0 ) {
+    if( strlen(rts.tokens[1]) > outfilenamelength-1 ) {
       return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
     } else {
+      strcpy( outfilename, rts.tokens[1] );
       return FILEREQUESTOR_RESULT_OK;
     }
-  } else if( strcmp("DOES-NOT-EXIST",result) == 0 ) {
+  } else if( rts.token_count == 1 && strcmp("DOES-NOT-EXIST",rts.tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
-  } else if( strcmp("SERVER-ERROR",result) == 0 ) {
+  } else if( rts.token_count == 1 && strcmp("SERVER-ERROR",rts.tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_SERVER_ERROR;
   } else {
     return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
