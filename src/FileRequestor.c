@@ -4,8 +4,11 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fuse.h>
+#include <unistd.h>
 #include "FileRequestor.h"
 #include "Tokenizer.h"
 
@@ -35,8 +38,7 @@ static int FileRequestor_open_control( struct FileRequestor *r ) {
   return socketfd;
 }
 
-int FileRequestor_parse_result( const char *result, char *outfilename, int outfilenamelength ) {
-  char format[128];
+int FileRequestor_parse_open_file_result( const char *result, char *outfilename, int outfilenamelength ) {
   int z;
   struct TokenList rts;
   
@@ -62,13 +64,39 @@ int FileRequestor_parse_result( const char *result, char *outfilename, int outfi
   }
 }
 
+int FileRequestor_parse_dir_entries( FILE *stream, void *filler_dat, fuse_fill_dir_t filler ) {
+  char linebuffer[1024];
+  struct TokenList rts;
+  struct stat st;
+  int z;
+  long size;
+  
+  memset( &st, 0, sizeof st );
+  while( fgets( linebuffer, sizeof linebuffer, stream ) != NULL ) {
+    z = Tokenizer_tokenize( linebuffer, &rts );
+    if( z != 0 ) return z;
+    if( rts.token_count == 4 && strcmp("DIR-ENTRY",rts.tokens[0]) == 0 ) {
+      sscanf( rts.tokens[2], "%ld", &size );
+      sscanf( rts.tokens[3], "%o", &st.st_mode );
+      st.st_size = size;
+      filler( filler_dat, rts.tokens[1], &st, 0 );
+    } else if( rts.token_count >= 1 && strcmp("END-DIR-LIST",rts.tokens[0]) == 0 ) {
+      return FILEREQUESTOR_RESULT_OK;
+    } else {
+      warnx( "Bad nummer args or someth? %s, %d", rts.tokens[0], rts.token_count );
+      return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+    }
+  }
+  warnx( "Reached end of feiul" );
+  return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+}
+
 int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
   int controlsock;
   char buffer[1024];
   int written;
   int errstash;
   ssize_t readed;
-  int res;
   int i;
   
   written = snprintf( buffer, 1024, "%s \"%s\"\n", "OPEN-READ", infilename );
@@ -101,5 +129,9 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
       break;
     }
   }
-  return FileRequestor_parse_result( buffer, outfilename, outfilenamelength );
+  return FileRequestor_parse_open_file_result( buffer, outfilename, outfilenamelength );
+}
+
+int FileRequestor_read_dir( struct FileRequestor *r, const char *infilename, fuse_fill_dir_t filler ) {
+  return 0; //todo and stuf
 }
