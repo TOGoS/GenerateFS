@@ -17,6 +17,10 @@ build/FileRequestorTest: build/FileRequestor.o build/Tokenizer.o src/FileRequest
 	mkdir -p build
 	${CC} -o build/FileRequestorTest src/FileRequestorTest.c build/FileRequestor.o build/Tokenizer.o
 
+build/FileRequestorTest2: build/FileRequestor.o build/Tokenizer.o src/FileRequestorTest2.c
+	mkdir -p build
+	${CC} -o build/FileRequestorTest2 src/FileRequestorTest2.c build/FileRequestor.o build/Tokenizer.o
+
 build/TokenizerTest: build/Tokenizer.o src/TokenizerTest.c
 	mkdir -p build
 	${CC} -o build/TokenizerTest src/TokenizerTest.c build/Tokenizer.o
@@ -32,9 +36,10 @@ build/fusetest:
 clean:
 	rm -rf build
 
-test: build/FileRequestorTest build/TokenizerTest
-	build/FileRequestorTest
+test: build/TokenizerTest build/FileRequestorTest build/FileRequestorTest2
 	build/TokenizerTest
+	build/FileRequestorTest
+	build/FileRequestorTest2
 
 stats: build/stats
 	build/stats

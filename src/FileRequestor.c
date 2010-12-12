@@ -27,13 +27,25 @@ static int FileRequestor_open_control( struct FileRequestor *r ) {
   sa.sin_family = AF_INET;
   sa.sin_port = htons(r->port);
   
-  if( !inet_pton( AF_INET, r->hostname, &sa.sin_addr ) ) return -1;
+  if( !inet_pton( AF_INET, r->hostname, &sa.sin_addr ) ) {
+    errno = EAFNOSUPPORT;
+    warn( "Could not convert '%s' into an IP4 address", r->hostname );
+    return -1;
+  }
+  
+  // warn( "IP addy = %08lx, port = 0x%04hx, port support = %04hx", (unsigned long)sa.sin_addr.s_addr, sa.sin_port, r->port );
   
   socketfd = socket( PF_INET, SOCK_STREAM, IPPROTO_TCP );
-  if( socketfd < 0 ) return -1;
+  if( socketfd < 0 ) {
+    warn( "Could not create control socket" );
+    return -1;
+  }
   
   z = connect( socketfd, (struct sockaddr *)&sa, sizeof sa );
-  if( z < 0 ) return -1;
+  if( z < 0 ) {
+    warn( "Could not connect control socket" );
+    return -1;
+  }
   
   return socketfd;
 }
@@ -99,8 +111,8 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
   ssize_t readed;
   int i;
   
-  written = snprintf( buffer, 1024, "%s \"%s\"\n", "OPEN-READ", infilename );
-  if( written > 1024 ) {
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", "OPEN-READ", infilename );
+  if( written >= sizeof buffer ) {
     warnx( "Input filename is too long: %s", infilename );
     errno = ENAMETOOLONG;
     return -1;
@@ -110,7 +122,7 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
   if( controlsock < 0 ) return -1;
   
   write( controlsock, buffer, written );
-  readed = read( controlsock, buffer, 1024-1 );
+  readed = read( controlsock, buffer, sizeof buffer - 1 );
   if( readed < 0 ) {
     errstash = errno;
     warn( "Failed to read response line" );
@@ -118,7 +130,7 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
     errno = errstash;
     return -1;
   }
-  if( readed >= 1024-1 ) {
+  if( readed >= sizeof buffer - 1 ) {
     warnx( "Response line is too long: %s", buffer );
   }
   close( controlsock );
@@ -132,6 +144,60 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
   return FileRequestor_parse_open_file_result( buffer, outfilename, outfilenamelength );
 }
 
-int FileRequestor_read_dir( struct FileRequestor *r, const char *infilename, fuse_fill_dir_t filler ) {
-  return 0; //todo and stuf
+int FileRequestor_read_dir( struct FileRequestor *r, const char *path, void *filler_dat, fuse_fill_dir_t filler ) {
+  int controlsock;
+  char buffer[1024];
+  struct TokenList rts;
+  int written;
+  FILE *dirstream;
+  int z;
+  
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", "READ-DIR", path );
+  if( written >= sizeof buffer ) {
+    warnx( "Input filename is too long: %s", path );
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+  
+  controlsock = FileRequestor_open_control( r );
+  if( controlsock < 0 ) {
+    warn( "Failed to open control socket" );
+    return -1;
+  }
+  
+  write( controlsock, buffer, written );
+  
+  dirstream = fdopen( controlsock, "r+" );
+  if( dirstream == NULL ) {
+    warn( "Failed to fdopen(controlsock,\"r+\")" );
+    z = -1;
+    goto closefd;
+  }
+  
+  if( fgets( buffer, sizeof buffer, dirstream ) == NULL ) {
+    warnx( "Failed to read first result line after READ-DIR request" );
+    z = -1;
+    goto close;
+  }
+  
+  if( (z = Tokenizer_tokenize( buffer, &rts )) < 0 ) {
+    warnx( "Failed to tokenize first result line after READ-DIR request" );
+    goto close;
+  }
+  
+  if( rts.token_count == 1 && strcmp("OK-DIR-LIST",rts.tokens[0]) == 0 ) {
+    z = FileRequestor_parse_dir_entries( dirstream, filler_dat, filler );
+  } else if( rts.token_count >= 1 ) {
+    warnx("Server returned error in response to READ-DIR: %s", rts.tokens[0]);
+    z = -1;
+  } else {
+    warnx("Server returned nothing in response to READ-DIR");
+    z = -1;
+  }
+  
+ close:
+  fclose( dirstream );
+ closefd:
+  close( controlsock );
+  return z;
 }

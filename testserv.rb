@@ -1,5 +1,6 @@
 #!/usr/bin/ruby
 
+require 'timeout'
 require 'socket'
 require 'fileutils'
 
@@ -20,10 +21,12 @@ module TOGoS ; module GeneratorFS
     end
     
     def write_line( *args )
-      @sock.puts args.collect { |a|
+      line = args.collect { |a|
         a = a.to_s
         a =~ /[\s"\\]/ ? a.inspect : a
       }.join(' ')
+      STDERR.puts( "#{$0}: writing line: #{line}" );
+      @sock.puts line
     end
     
     def write_stat( size, mode )
@@ -58,8 +61,14 @@ module TOGoS ; module GeneratorFS
   end
   
   class TestServer
+    def initialize
+      @port = 23823
+    end
+    
+    attr_accessor :port
+    
     def run
-      serv = TCPServer.new('127.0.0.1',23823)
+      serv = TCPServer.new('127.0.0.1',@port)
       while s = serv.accept
         Thread.new( s ) { |sock|
           cs = ClientSocket.new(sock) 
@@ -96,7 +105,7 @@ module TOGoS ; module GeneratorFS
               else
                 cs.write_does_not_exist
               end
-            when 'GET-DIR'
+            when 'READ-DIR'
               case loine[1]
               when nil
                 cs.write_client_error "Missing argument to GET-DIR"
@@ -129,5 +138,31 @@ module TOGoS ; module GeneratorFS
 end ; end
 
 if __FILE__ == $0
-  TOGoS::GeneratorFS::TestServer.new.run
+  timeout = nil
+  ts = TOGoS::GeneratorFS::TestServer.new
+  
+  args = $*.clone
+  while arg = args.shift
+    case arg
+    when '-timeout'
+      timeout = args.shift.to_f
+    when '-port'
+      ts.port = args.shift.to_i
+    else
+      STDERR.puts "Unrecognised arg #{arg}"
+      exit 1
+    end
+  end
+  
+  if timeout
+    begin
+      timeout timeout do
+        ts.run
+      end
+    rescue Timeout::Error
+      STDERR.puts "#{$0}: Quitting due to timeout"
+    end
+  else
+    ts.run
+  end
 end
