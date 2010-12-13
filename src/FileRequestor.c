@@ -20,14 +20,28 @@ int FileRequestor_init( struct FileRequestor *r, const char *hostname, short int
 }
 
 int FileRequestor_parse_error( struct TokenList *rts ) {
-  if( rts->token_count == 1 && strcmp("DOES-NOT-EXIST",rts->tokens[0]) == 0 ) {
+  if( rts->token_count >= 1 && strcmp("DOES-NOT-EXIST",rts->tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
-  } else if( rts->token_count == 1 && strcmp("SERVER-ERROR",rts->tokens[0]) == 0 ) {
+  } else if( rts->token_count >= 1 && strcmp("SERVER-ERROR",rts->tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_SERVER_ERROR;
-  } else if( rts->token_count == 1 && strcmp("INVALID-OPERATION",rts->tokens[0]) == 0 ) {
+  } else if( rts->token_count >= 1 && strcmp("INVALID-OPERATION",rts->tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_BAD_OPERATION;
+  } else if( rts->token_count >= 1 && strcmp("PERMISSION-DENIED",rts->tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_PERMISSION_DENIED;
   } else {
     return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+  }
+}
+
+static void FileRequestor_chomp_line( char *l ) {
+ check: switch( *l ) {
+  case( '\r' ): case('\n'):
+    *l = 0;
+  case( 0 ):
+    return;
+  default:
+    ++l;
+    goto check;
   }
 }
 
@@ -78,6 +92,23 @@ int FileRequestor_parse_open_file_result( const char *result, char *outfilename,
   }
 }
 
+int FileRequestor_parse_close_file_result( const char *result ) {
+  int z;
+  struct TokenList rts;
+  
+  z = Tokenizer_tokenize( result, &rts );
+  if( z != 0 ) return z;
+  if( rts.token_count == 0 ) {
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+  }
+  
+  if( rts.token_count == 1 && strcmp("OK-CLOSED",rts.tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_OK;
+  } else {
+    return FileRequestor_parse_error( &rts );
+  }
+}
+
 int FileRequestor_parse_dir_entries( FILE *stream, void *filler_dat, fuse_fill_dir_t filler ) {
   char linebuffer[1024];
   struct TokenList rts;
@@ -103,23 +134,20 @@ int FileRequestor_parse_dir_entries( FILE *stream, void *filler_dat, fuse_fill_d
   return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
 }
 
-int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
+static int FileRequestor_open_file( struct FileRequestor *r, const char *command, const char *infilename, char *outfilename, int outfilenamelength ) {
   int controlsock;
   char buffer[1024];
   int written;
   int errstash;
   ssize_t readed;
-  int i;
   
-  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", "OPEN-READ", infilename );
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", command, infilename );
   if( written >= sizeof buffer ) {
-    warnx( "Input filename is too long: %s", infilename );
-    errno = ENAMETOOLONG;
-    return -1;
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
   }
 
   controlsock = FileRequestor_open_control( r );
-  if( controlsock < 0 ) return -1;
+  if( controlsock < 0 ) return GENFS_RESULT_IO_ERROR;
   
   write( controlsock, buffer, written );
   readed = read( controlsock, buffer, sizeof buffer - 1 );
@@ -133,14 +161,55 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
   if( readed >= sizeof buffer - 1 ) {
     return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
   }
-  
-  for( i=0; buffer[i] != 0; ++i ) {
-    if( buffer[i] == '\r' || buffer[i] == '\n' ) {
-      buffer[i] = 0;
-      break;
-    }
-  }
+  FileRequestor_chomp_line( buffer );
   return FileRequestor_parse_open_file_result( buffer, outfilename, outfilenamelength );
+}
+
+static int FileRequestor_close_file( struct FileRequestor *r, const char *command, const char *infilename, const char *outfilename ) {
+  int controlsock;
+  char buffer[1024];
+  int written;
+  int errstash;
+  ssize_t readed;
+  
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\" \"%s\"\n", command, infilename, outfilename );
+  if( written >= sizeof buffer ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+
+  controlsock = FileRequestor_open_control( r );
+  if( controlsock < 0 ) return GENFS_RESULT_IO_ERROR;
+  
+  write( controlsock, buffer, written );
+  readed = read( controlsock, buffer, sizeof buffer - 1 );
+  if( readed < 0 ) {
+    errstash = errno;
+    close( controlsock );
+    errno = errstash;
+    return GENFS_RESULT_IO_ERROR;
+  }
+  close( controlsock );
+  if( readed >= sizeof buffer - 1 ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+  FileRequestor_chomp_line( buffer );
+  return FileRequestor_parse_close_file_result( buffer );
+}
+
+int FileRequestor_open_read( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
+  return FileRequestor_open_file( r, "OPEN-READ", infilename, outfilename, outfilenamelength );
+}
+
+int FileRequestor_close_read( struct FileRequestor *r, const char *infilename, const char *outfilename ) {
+  return FileRequestor_close_file( r, "CLOSE-READ", infilename, outfilename );
+}
+
+int FileRequestor_open_write( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
+  return FileRequestor_open_file( r, "OPEN-WRITE", infilename, outfilename, outfilenamelength );
+}
+
+int FileRequestor_close_write( struct FileRequestor *r, const char *infilename, const char *outfilename ) {
+  return FileRequestor_close_file( r, "CLOSE-WRITE", infilename, outfilename );
 }
 
 int FileRequestor_read_dir( struct FileRequestor *r, const char *path, void *filler_dat, fuse_fill_dir_t filler ) {

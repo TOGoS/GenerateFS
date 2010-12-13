@@ -33,16 +33,20 @@ module TOGoS ; module GeneratorFS
       write_line 'OK-STAT', size, mode
     end
     
-    def write_client_error( text )
-      write_line 'CLIENT-ERROR', text
+    def write_client_error( *text )
+      write_line 'CLIENT-ERROR', *text
     end
 
-    def write_server_error
-      write_line 'SERVER-ERROR'
+    def write_server_error( *text )
+      write_line 'SERVER-ERROR', *text
     end
     
     def write_does_not_exist
       write_line 'DOES-NOT-EXIST'
+    end
+    
+    def write_permission_denied
+      write_line 'PERMISSION-DENIED'
     end
     
     def write_invalid_operation
@@ -95,6 +99,8 @@ module TOGoS ; module GeneratorFS
                 cs.write_stat   0, '0040755'
               when '/subdir/test2.txt'
                 cs.write_stat 100, '0100700'
+              when '/secret.txt'
+                cs.write_stat 100, '0100000'
               when '/server-error'
                 cs.write_server_error
               else
@@ -112,8 +118,24 @@ module TOGoS ; module GeneratorFS
                 cs.write_invalid_operation
               when '/subdir/test2.txt'
                 cs.write_ok_alias 'test-data/test2.txt'
+              when '/secret.txt'
+                cs.write_permission_denied
               when '/server-error'
                 cs.write_server_error
+              else
+                if loine[0] == 'OPEN-WRITE'
+                  cs.write_ok_alias 'temp'+loine[1]
+                elsif File.exist? 'temp'+loine[1]
+                  cs.write_ok_alias 'temp'+loine[1]
+                else
+                  cs.write_does_not_exist
+                end
+              end
+            when 'CLOSE-READ'
+              cs.write_line 'OK-CLOSED'
+            when 'CLOSE-WRITE'
+              if File.exist? loine[2]
+                cs.write_line 'OK-CLOSED'
               else
                 cs.write_does_not_exist
               end
@@ -133,6 +155,8 @@ module TOGoS ; module GeneratorFS
                   cs.write_dir_entry 'test2.txt', 700, '0100600'
                 }
               when '/subdir/test1.txt'
+                cs.write_invalid_operation
+              when '/secret.txt'
                 cs.write_invalid_operation
               when '/server-error'
                 cs.write_server_error
@@ -168,6 +192,8 @@ if __FILE__ == $0
     end
   end
   
+  FileUtils.rm_rf 'temp'
+  FileUtils.mkdir_p 'temp'
   if timeout
     begin
       timeout timeout do

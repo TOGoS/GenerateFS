@@ -170,19 +170,19 @@ int main( int argc, char **argv ) {
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_SERVER_ERROR, z, __FILE__, __LINE__ );
   }
   
-  /* Test open files */
+  /* Test open files for reading */
   
-  z = FileRequestor_open_file( &fr, "/doesnotexist.txt", outfilename, sizeof outfilename );
+  z = FileRequestor_open_read( &fr, "/doesnotexist.txt", outfilename, sizeof outfilename );
   if( z != FILEREQUESTOR_RESULT_DOES_NOT_EXIST ) {
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_DOES_NOT_EXIST, z, __FILE__, __LINE__ );
   }
   
-  z = FileRequestor_open_file( &fr, "/subdir", outfilename, sizeof outfilename );
+  z = FileRequestor_open_read( &fr, "/subdir", outfilename, sizeof outfilename );
   if( z != FILEREQUESTOR_RESULT_BAD_OPERATION ) {
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_BAD_OPERATION, z, __FILE__, __LINE__ );
   }
   
-  z = FileRequestor_open_file( &fr, "/test1.txt", outfilename, sizeof outfilename );
+  z = FileRequestor_open_read( &fr, "/test1.txt", outfilename, sizeof outfilename );
   if( z != FILEREQUESTOR_RESULT_OK ) {
     if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
@@ -191,7 +191,7 @@ int main( int argc, char **argv ) {
     errx( 1, "Expected '%s', got '%s', %s:%d", "test-data/test1.txt", outfilename, __FILE__, __LINE__ );
   }
   
-  z = FileRequestor_open_file( &fr, "/subdir/test2.txt", outfilename, sizeof outfilename );
+  z = FileRequestor_open_read( &fr, "/subdir/test2.txt", outfilename, sizeof outfilename );
   if( z != FILEREQUESTOR_RESULT_OK ) {
     if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
@@ -199,12 +199,26 @@ int main( int argc, char **argv ) {
   if( strcmp("test-data/test2.txt",outfilename) != 0 ) {
     errx( 1, "Expected '%s', got '%s', %s:%d", "test-data/test2.txt", outfilename, __FILE__, __LINE__ );
   }
+
+  z = FileRequestor_close_read( &fr, "/subdir/test2.txt", outfilename );
+  if( z != FILEREQUESTOR_RESULT_OK ) {
+    if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
+  }  
   
-  z = FileRequestor_open_file( &fr, "/server-error", outfilename, sizeof outfilename );
+  z = FileRequestor_open_read( &fr, "/server-error", outfilename, sizeof outfilename );
   if( z != FILEREQUESTOR_RESULT_SERVER_ERROR ) {
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_SERVER_ERROR, z, __FILE__, __LINE__ );
   }
-
+  
+  z = FileRequestor_open_read( &fr, "/secret.txt", outfilename, sizeof outfilename );
+  if( z != FILEREQUESTOR_RESULT_PERMISSION_DENIED ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_PERMISSION_DENIED, z, __FILE__, __LINE__ );
+  }
+  
+  /* Test open files for writing */
+  
+  
   kill( server_pid, SIGTERM );
   
   return 0;
