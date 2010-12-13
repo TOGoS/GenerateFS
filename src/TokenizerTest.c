@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <err.h>
+#include "genfs-errors.h"
 #include "Tokenizer.h"
 
 void dump_tokens( struct TokenList *tokenlist ) {

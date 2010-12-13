@@ -1,5 +1,6 @@
 #define FUSE_USE_VERSION 26
 
+#include <errno.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -7,6 +8,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <fuse.h>
+#include "genfs-errors.h"
 #include "FileRequestor.h"
 
 void test_open_file_result_parsing() {
@@ -23,8 +25,8 @@ void test_open_file_result_parsing() {
   }
 
   z = FileRequestor_parse_open_file_result( "OK-ALIAS \"/home/junk/chambawamba\" crumb", buffer, sizeof buffer );
-  if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
-    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
+  if( z != FILEREQUESTOR_RESULT_MALFORMED_RESPONSE ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MALFORMED_RESPONSE, z, __FILE__, __LINE__ );
   }
 
   z = FileRequestor_parse_open_file_result( "OK-ALIAS \"/home/junk/chambawamba\"", buffer, sizeof buffer - 1 );
@@ -43,18 +45,18 @@ void test_open_file_result_parsing() {
   }
   
   z = FileRequestor_parse_open_file_result( "DOES-NOT-EXIST \"askldmnaisd message asdnasndiunkjded\"", buffer, 22 );
-  if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
-    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
+  if( z != FILEREQUESTOR_RESULT_MALFORMED_RESPONSE ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MALFORMED_RESPONSE, z, __FILE__, __LINE__ );
   }
   
   z = FileRequestor_parse_open_file_result( "SERVER-ERROR \"askldmnaisd message asdnasndiunkjded\"", buffer, 22 );
-  if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
-    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
+  if( z != FILEREQUESTOR_RESULT_MALFORMED_RESPONSE ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MALFORMED_RESPONSE, z, __FILE__, __LINE__ );
   }
   
   z = FileRequestor_parse_open_file_result( "", buffer, 22 );
-  if( z != FILEREQUESTOR_RESULT_MESSAGE_MALFORMED ) {
-    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MESSAGE_MALFORMED, z, __FILE__, __LINE__ );
+  if( z != FILEREQUESTOR_RESULT_MALFORMED_RESPONSE ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_MALFORMED_RESPONSE, z, __FILE__, __LINE__ );
   }
 }
 
@@ -62,6 +64,8 @@ struct FillerTestResults {
   int test1_found;
   int subdir_found;
 };
+
+int null_trd_filler(void *buf, const char *name, const struct stat *stbuf, off_t off) { return 0; }
 
 int trd_filler(void *buf, const char *name, const struct stat *stbuf, off_t off) {
   struct FillerTestResults *ftr = (struct FillerTestResults *)buf;
@@ -125,9 +129,20 @@ pid_t start_server() {
 
 int main( int argc, char **argv ) {
   struct FileRequestor fr;
+  int z;
   pid_t server_pid = start_server();
+  
   if( server_pid < 0 ) {
     err( 1, "Failed to start server (fork fail?)" );
+  }
+  
+  FileRequestor_init( &fr, "127.0.0.1", 23820 );
+  z = FileRequestor_read_dir( &fr, "/", NULL, null_trd_filler );
+  if( z != GENFS_RESULT_IO_ERROR ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", GENFS_RESULT_IO_ERROR, z, __FILE__, __LINE__ );
+  }
+  if( errno != ECONNREFUSED ) {
+    errx( 1, "Expected %d, got %d, at %s:%d", ECONNREFUSED, errno, __FILE__, __LINE__ );
   }
   
   FileRequestor_init( &fr, "127.0.0.1", 23823 );

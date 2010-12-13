@@ -1,3 +1,4 @@
+#include "genfs-errors.h"
 #include "Tokenizer.h"
 
 int Tokenizer_tokenize( const char *input, struct TokenList *tokenlist ) {

@@ -25,7 +25,7 @@ module TOGoS ; module GeneratorFS
         a = a.to_s
         a =~ /[\s"\\]/ ? a.inspect : a
       }.join(' ')
-      STDERR.puts( "#{$0}: writing line: #{line}" );
+      # STDERR.puts( "#{$0}: writing line: #{line}" );
       @sock.puts line
     end
     

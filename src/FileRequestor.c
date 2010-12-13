@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <fuse.h>
 #include <unistd.h>
+#include "genfs-errors.h"
 #include "FileRequestor.h"
 #include "Tokenizer.h"
 
@@ -29,23 +30,16 @@ static int FileRequestor_open_control( struct FileRequestor *r ) {
   
   if( !inet_pton( AF_INET, r->hostname, &sa.sin_addr ) ) {
     errno = EAFNOSUPPORT;
-    warn( "Could not convert '%s' into an IP4 address", r->hostname );
-    return -1;
+    return GENFS_RESULT_IO_ERROR;
   }
   
   // warn( "IP addy = %08lx, port = 0x%04hx, port support = %04hx", (unsigned long)sa.sin_addr.s_addr, sa.sin_port, r->port );
   
   socketfd = socket( PF_INET, SOCK_STREAM, IPPROTO_TCP );
-  if( socketfd < 0 ) {
-    warn( "Could not create control socket" );
-    return -1;
-  }
+  if( socketfd < 0 ) return GENFS_RESULT_IO_ERROR;
   
   z = connect( socketfd, (struct sockaddr *)&sa, sizeof sa );
-  if( z < 0 ) {
-    warn( "Could not connect control socket" );
-    return -1;
-  }
+  if( z < 0 ) return GENFS_RESULT_IO_ERROR;
   
   return socketfd;
 }
@@ -57,7 +51,7 @@ int FileRequestor_parse_open_file_result( const char *result, char *outfilename,
   z = Tokenizer_tokenize( result, &rts );
   if( z != 0 ) return z;
   if( rts.token_count == 0 ) {
-    return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
   }
   
   if( rts.token_count == 2 && strcmp("OK-ALIAS",rts.tokens[0]) == 0 ) {
@@ -72,7 +66,7 @@ int FileRequestor_parse_open_file_result( const char *result, char *outfilename,
   } else if( rts.token_count == 1 && strcmp("SERVER-ERROR",rts.tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_SERVER_ERROR;
   } else {
-    return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
   }
 }
 
@@ -95,12 +89,10 @@ int FileRequestor_parse_dir_entries( FILE *stream, void *filler_dat, fuse_fill_d
     } else if( rts.token_count >= 1 && strcmp("END-DIR-LIST",rts.tokens[0]) == 0 ) {
       return FILEREQUESTOR_RESULT_OK;
     } else {
-      warnx( "Bad nummer args or someth? %s, %d", rts.tokens[0], rts.token_count );
-      return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+      return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
     }
   }
-  warnx( "Reached end of feiul" );
-  return FILEREQUESTOR_RESULT_MESSAGE_MALFORMED;
+  return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
 }
 
 int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
@@ -125,15 +117,14 @@ int FileRequestor_open_file( struct FileRequestor *r, const char *infilename, ch
   readed = read( controlsock, buffer, sizeof buffer - 1 );
   if( readed < 0 ) {
     errstash = errno;
-    warn( "Failed to read response line" );
     close( controlsock );
     errno = errstash;
-    return -1;
-  }
-  if( readed >= sizeof buffer - 1 ) {
-    warnx( "Response line is too long: %s", buffer );
+    return GENFS_RESULT_IO_ERROR;
   }
   close( controlsock );
+  if( readed >= sizeof buffer - 1 ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
   
   for( i=0; buffer[i] != 0; ++i ) {
     if( buffer[i] == '\r' || buffer[i] == '\n' ) {
@@ -161,38 +152,34 @@ int FileRequestor_read_dir( struct FileRequestor *r, const char *path, void *fil
   
   controlsock = FileRequestor_open_control( r );
   if( controlsock < 0 ) {
-    warn( "Failed to open control socket" );
-    return -1;
+    return GENFS_RESULT_IO_ERROR;
   }
   
   write( controlsock, buffer, written );
   
   dirstream = fdopen( controlsock, "r+" );
   if( dirstream == NULL ) {
-    warn( "Failed to fdopen(controlsock,\"r+\")" );
-    z = -1;
+    z = GENFS_RESULT_IO_ERROR;
     goto closefd;
   }
   
   if( fgets( buffer, sizeof buffer, dirstream ) == NULL ) {
-    warnx( "Failed to read first result line after READ-DIR request" );
-    z = -1;
+    z = FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
     goto close;
   }
   
   if( (z = Tokenizer_tokenize( buffer, &rts )) < 0 ) {
-    warnx( "Failed to tokenize first result line after READ-DIR request" );
     goto close;
   }
   
   if( rts.token_count == 1 && strcmp("OK-DIR-LIST",rts.tokens[0]) == 0 ) {
     z = FileRequestor_parse_dir_entries( dirstream, filler_dat, filler );
-  } else if( rts.token_count >= 1 ) {
-    warnx("Server returned error in response to READ-DIR: %s", rts.tokens[0]);
-    z = -1;
+  } else if( rts.token_count == 1 && strcmp("DOES-NOT-EXIST",rts.tokens[0]) == 0 ) {
+    z = FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
+  } else if( rts.token_count == 1 && strcmp("SERVER-ERROR",rts.tokens[0]) == 0 ) {
+    z = FILEREQUESTOR_RESULT_SERVER_ERROR;
   } else {
-    warnx("Server returned nothing in response to READ-DIR");
-    z = -1;
+    z = FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
   }
   
  close:
