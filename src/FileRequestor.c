@@ -212,6 +212,57 @@ int FileRequestor_close_write( struct FileRequestor *r, const char *infilename, 
   return FileRequestor_close_file( r, "CLOSE-WRITE", infilename, outfilename );
 }
 
+int FileRequestor_get_stat( struct FileRequestor *r, const char *path, struct stat *st ) {
+  int controlsock;
+  char buffer[1024];
+  struct TokenList rts;
+  int written;
+  int readed;
+  int errstash;
+  long size;
+  int z;
+  
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", "GET-STAT", path );
+  if( written >= sizeof buffer ) {
+    warnx( "Input filename is too long: %s", path );
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+  
+  controlsock = FileRequestor_open_control( r );
+  if( controlsock < 0 ) {
+    return GENFS_RESULT_IO_ERROR;
+  }
+  
+  write( controlsock, buffer, written );
+  
+  readed = read( controlsock, buffer, sizeof buffer - 1 );
+  if( readed < 0 ) {
+    errstash = errno;
+    close( controlsock );
+    errno = errstash;
+    warn("IO Error while statting '%s'",path);
+    return GENFS_RESULT_IO_ERROR;
+  }
+  close( controlsock );
+  if( readed >= sizeof buffer - 1 ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+
+  FileRequestor_chomp_line( buffer );
+  z = Tokenizer_tokenize( buffer, &rts );
+  if( z != 0 ) return z;
+  
+  if( rts.token_count >= 3 && strcmp("OK-STAT",rts.tokens[0]) == 0 ) {
+    sscanf( rts.tokens[1], "%ld", &size );
+    sscanf( rts.tokens[2], "%o", &st->st_mode );
+    st->st_size = size;
+    return FILEREQUESTOR_RESULT_OK;
+  } else {
+    return FileRequestor_parse_error( &rts );
+  }
+}
+
 int FileRequestor_read_dir( struct FileRequestor *r, const char *path, void *filler_dat, fuse_fill_dir_t filler ) {
   int controlsock;
   char buffer[1024];
@@ -250,6 +301,8 @@ int FileRequestor_read_dir( struct FileRequestor *r, const char *path, void *fil
   }
   
   if( rts.token_count == 1 && strcmp("OK-DIR-LIST",rts.tokens[0]) == 0 ) {
+    filler( filler_dat, ".", NULL, 0 );
+    filler( filler_dat, "..", NULL, 0 );
     z = FileRequestor_parse_dir_entries( dirstream, filler_dat, filler );
   } else {
     z = FileRequestor_parse_error( &rts );

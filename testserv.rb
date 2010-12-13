@@ -94,13 +94,13 @@ module TOGoS ; module GeneratorFS
               when '/'
                 cs.write_stat   0, '0040755'
               when '/test1.txt'
-                cs.write_stat 100, '0100644'
+                cs.write_stat 128, '0100644'
               when '/subdir'
                 cs.write_stat   0, '0040755'
               when '/subdir/test2.txt'
-                cs.write_stat 100, '0100700'
+                cs.write_stat 700, '0100700'
               when '/secret.txt'
-                cs.write_stat 100, '0100000'
+                cs.write_permission_denied
               when '/server-error'
                 cs.write_server_error
               else
