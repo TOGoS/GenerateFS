@@ -19,6 +19,18 @@ int FileRequestor_init( struct FileRequestor *r, const char *hostname, short int
   return 0;
 }
 
+int FileRequestor_parse_error( struct TokenList *rts ) {
+  if( rts->token_count == 1 && strcmp("DOES-NOT-EXIST",rts->tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
+  } else if( rts->token_count == 1 && strcmp("SERVER-ERROR",rts->tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_SERVER_ERROR;
+  } else if( rts->token_count == 1 && strcmp("INVALID-OPERATION",rts->tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_BAD_OPERATION;
+  } else {
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+  }
+}
+
 static int FileRequestor_open_control( struct FileRequestor *r ) {
   struct sockaddr_in sa;
   int socketfd;
@@ -61,12 +73,8 @@ int FileRequestor_parse_open_file_result( const char *result, char *outfilename,
       strcpy( outfilename, rts.tokens[1] );
       return FILEREQUESTOR_RESULT_OK;
     }
-  } else if( rts.token_count == 1 && strcmp("DOES-NOT-EXIST",rts.tokens[0]) == 0 ) {
-    return FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
-  } else if( rts.token_count == 1 && strcmp("SERVER-ERROR",rts.tokens[0]) == 0 ) {
-    return FILEREQUESTOR_RESULT_SERVER_ERROR;
   } else {
-    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+    return FileRequestor_parse_error( &rts );
   }
 }
 
@@ -174,12 +182,8 @@ int FileRequestor_read_dir( struct FileRequestor *r, const char *path, void *fil
   
   if( rts.token_count == 1 && strcmp("OK-DIR-LIST",rts.tokens[0]) == 0 ) {
     z = FileRequestor_parse_dir_entries( dirstream, filler_dat, filler );
-  } else if( rts.token_count == 1 && strcmp("DOES-NOT-EXIST",rts.tokens[0]) == 0 ) {
-    z = FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
-  } else if( rts.token_count == 1 && strcmp("SERVER-ERROR",rts.tokens[0]) == 0 ) {
-    z = FILEREQUESTOR_RESULT_SERVER_ERROR;
   } else {
-    z = FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+    z = FileRequestor_parse_error( &rts );
   }
   
  close:

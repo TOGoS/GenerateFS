@@ -36,6 +36,10 @@ module TOGoS ; module GeneratorFS
     def write_client_error( text )
       write_line 'CLIENT-ERROR', text
     end
+
+    def write_server_error
+      write_line 'SERVER-ERROR'
+    end
     
     def write_does_not_exist
       write_line 'DOES-NOT-EXIST'
@@ -47,6 +51,10 @@ module TOGoS ; module GeneratorFS
     
     def write_dir_entry( name, size, mode )
       write_line 'DIR-ENTRY', name, size, mode
+    end
+    
+    def write_ok_alias( dest )
+      write_line 'OK-ALIAS', dest
     end
     
     def write_dir_list
@@ -87,6 +95,8 @@ module TOGoS ; module GeneratorFS
                 cs.write_stat   0, '0040755'
               when '/subdir/test2.txt'
                 cs.write_stat 100, '0100700'
+              when '/server-error'
+                cs.write_server_error
               else
                 cs.write_does_not_exist
               end
@@ -102,6 +112,8 @@ module TOGoS ; module GeneratorFS
                 cs.write_invalid_operation
               when '/subdir/test2.txt'
                 cs.write_ok_alias 'test-data/test2.txt'
+              when '/server-error'
+                cs.write_server_error
               else
                 cs.write_does_not_exist
               end
@@ -122,6 +134,8 @@ module TOGoS ; module GeneratorFS
                 }
               when '/subdir/test1.txt'
                 cs.write_invalid_operation
+              when '/server-error'
+                cs.write_server_error
               else
                 cs.write_does_not_exist
               end

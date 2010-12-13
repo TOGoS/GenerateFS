@@ -102,6 +102,7 @@ void test_read_directory( struct FileRequestor *fr ) {
   
   z = FileRequestor_read_dir( fr, "/", &tr, trd_filler );
   if( z != FILEREQUESTOR_RESULT_OK ) {
+    if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
     errx( 1, "Expected %d, got %d, at %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
   }
   
@@ -121,8 +122,9 @@ pid_t start_server() {
     }
     return -1; // should only get here on error
   } else {
-    // Give it some time to start up...
-    usleep(100000);
+    // Give it some time to start up because I can't
+    // think of an easy way to wait for it...
+    usleep(250000);
     return cid;
   }
 }
@@ -131,10 +133,13 @@ int main( int argc, char **argv ) {
   struct FileRequestor fr;
   int z;
   pid_t server_pid = start_server();
+  char outfilename[1024];
   
   if( server_pid < 0 ) {
     err( 1, "Failed to start server (fork fail?)" );
   }
+  
+  /* Test connection error handling */
   
   FileRequestor_init( &fr, "127.0.0.1", 23820 );
   z = FileRequestor_read_dir( &fr, "/", NULL, null_trd_filler );
@@ -145,9 +150,61 @@ int main( int argc, char **argv ) {
     errx( 1, "Expected %d, got %d, at %s:%d", ECONNREFUSED, errno, __FILE__, __LINE__ );
   }
   
+  /* Test read directories */
+  
   FileRequestor_init( &fr, "127.0.0.1", 23823 );
   test_read_directory( &fr );
   
+  z = FileRequestor_read_dir( &fr, "/doesnotexist", NULL, null_trd_filler );
+  if( z != FILEREQUESTOR_RESULT_DOES_NOT_EXIST ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_DOES_NOT_EXIST, z, __FILE__, __LINE__ );
+  }
+
+  z = FileRequestor_read_dir( &fr, "/test1.txt", NULL, null_trd_filler );
+  if( z != FILEREQUESTOR_RESULT_BAD_OPERATION ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_BAD_OPERATION, z, __FILE__, __LINE__ );
+  }
+  
+  z = FileRequestor_read_dir( &fr, "/server-error", NULL, null_trd_filler );
+  if( z != FILEREQUESTOR_RESULT_SERVER_ERROR ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_SERVER_ERROR, z, __FILE__, __LINE__ );
+  }
+  
+  /* Test open files */
+  
+  z = FileRequestor_open_file( &fr, "/doesnotexist.txt", outfilename, sizeof outfilename );
+  if( z != FILEREQUESTOR_RESULT_DOES_NOT_EXIST ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_DOES_NOT_EXIST, z, __FILE__, __LINE__ );
+  }
+  
+  z = FileRequestor_open_file( &fr, "/subdir", outfilename, sizeof outfilename );
+  if( z != FILEREQUESTOR_RESULT_BAD_OPERATION ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_BAD_OPERATION, z, __FILE__, __LINE__ );
+  }
+  
+  z = FileRequestor_open_file( &fr, "/test1.txt", outfilename, sizeof outfilename );
+  if( z != FILEREQUESTOR_RESULT_OK ) {
+    if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
+  }
+  if( strcmp("test-data/test1.txt",outfilename) != 0 ) {
+    errx( 1, "Expected '%s', got '%s', %s:%d", "test-data/test1.txt", outfilename, __FILE__, __LINE__ );
+  }
+  
+  z = FileRequestor_open_file( &fr, "/subdir/test2.txt", outfilename, sizeof outfilename );
+  if( z != FILEREQUESTOR_RESULT_OK ) {
+    if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
+  }
+  if( strcmp("test-data/test2.txt",outfilename) != 0 ) {
+    errx( 1, "Expected '%s', got '%s', %s:%d", "test-data/test2.txt", outfilename, __FILE__, __LINE__ );
+  }
+  
+  z = FileRequestor_open_file( &fr, "/server-error", outfilename, sizeof outfilename );
+  if( z != FILEREQUESTOR_RESULT_SERVER_ERROR ) {
+    errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_SERVER_ERROR, z, __FILE__, __LINE__ );
+  }
+
   kill( server_pid, SIGTERM );
   
   return 0;
