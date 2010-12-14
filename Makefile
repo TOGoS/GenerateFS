@@ -31,7 +31,7 @@ build/stats:
 	mkdir -p build
 	${CC} -o build/stats src/stats.c
 
-build/fusetest:
+build/fusetest: src/fusetest.c
 	mkdir -p build
 	${CC} -o build/fusetest src/fusetest.c
 

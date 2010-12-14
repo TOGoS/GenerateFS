@@ -2,7 +2,7 @@
  * Based on code at
  * http://sourceforge.net/apps/mediawiki/fuse/index.php?title=Hello_World
  */
-#define FUSE_USE_VERSION 26
+#define FUSE_USE_VERSION 28
 
 #include <unistd.h>
 
@@ -13,6 +13,8 @@
 #include <stdio.h>
 
 const char *hello_str = "Hello, world!\n";
+char bartext[1024];
+int barlength = 0;
 
 static int fusetest_getattr( const char *path, struct stat *stbuf ) {
   memset( stbuf, 0, sizeof(struct stat) );
@@ -24,6 +26,11 @@ static int fusetest_getattr( const char *path, struct stat *stbuf ) {
     stbuf->st_mode = S_IFREG | 0444;
     stbuf->st_nlink = 2;
     stbuf->st_size = strlen(hello_str);
+    return 0;
+  } else if( strcmp(path,"/bar") == 0 ) {
+    stbuf->st_mode = S_IFREG | 0644;
+    stbuf->st_nlink = 1;
+    stbuf->st_size = barlength;
     return 0;
   } else {
     return -ENOENT;
@@ -39,43 +46,84 @@ static int fusetest_readdir( const char *path, void *buf,
   filler(buf,".",NULL,0);
   filler(buf,"..",NULL,0);
   filler(buf,"foo",NULL,0);
+  filler(buf,"bar",NULL,0);
   return 0;
 }
 
 static int fusetest_open( const char *path, struct fuse_file_info *fi ) {
-  if( strcmp(path,"/foo") != 0 ) {
+  if( strcmp(path,"/foo") == 0 ) {
+    if( (fi->flags &3) != O_RDONLY ) {
+      return -EACCES;
+    }
+    return 0;
+  } else if( strcmp(path,"/bar") == 0 ) {
+    return 0;
+  } else {
     return -ENOENT;
   }
-  if( (fi->flags &3) != O_RDONLY ) {
-    return -EACCES;
-  }
-  return 0;
 }
 
 static int fusetest_read( const char *path, char *buf, size_t size,
 			  off_t offset, struct fuse_file_info *fi ) {
-  puts("Serving\n");
   size_t len;
-  sleep(5);
-  if( strcmp(path,"/foo") != 0 ) {
+  if( strcmp(path,"/foo") == 0 ) {
+    len = strlen(hello_str);
+    if( offset < len ) {
+      size = len-offset;
+      memcpy(buf, hello_str+offset, size);
+    } else {
+      size = 0;
+    }
+    return size;
+  } else if( strcmp(path,"/bar") == 0 ) {
+    len = barlength;
+    if( offset < len ) {
+      size = len-offset;
+      memcpy(buf, bartext+offset, size);
+    } else {
+      size = 0;
+    }
+    return size;
+  } else {
     return -ENOENT;
   }
-  len = strlen(hello_str);
-  if( offset < len ) {
-    size = len-offset;
-    memcpy(buf, hello_str+offset, size);
+}
+
+static int fusetest_truncate( const char *path, off_t offset, struct fuse_file_info *fi ) {
+  if( strcmp(path,"/bar") == 0 ) {
+    barlength = 0;
+    return 0;
   } else {
-    size = 0;
+    return -EACCES;
   }
-  puts("Done serving\n");
-  return size;
+}
+
+static int fusetest_write( const char *path, char *buf, size_t size,
+			   off_t offset, struct fuse_file_info *fi ) {
+  size_t len;
+  if( strcmp(path,"/bar") == 0 ) {
+    if( barlength < sizeof bartext ) {
+      if( barlength + size < sizeof bartext ) {
+	len = size;
+      } else {
+	len = sizeof bartext - size;
+      }
+      memcpy( bartext+offset, buf, len );
+    }
+    barlength += size;
+    return size;
+  } else {
+    return -EACCES;
+  }
 }
 
 static struct fuse_operations fusetest_operations = {
   .getattr = fusetest_getattr,
   .readdir = fusetest_readdir,
+  .truncate = fusetest_truncate,
   .open    = fusetest_open,
   .read    = fusetest_read,
+  .write   = fusetest_write,
 };
 
 int main( int argc, char **argv ) {
