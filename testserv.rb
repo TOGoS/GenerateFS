@@ -15,8 +15,9 @@ module TOGoS ; module GeneratorFS
   end
   
   class ClientSocket
-    def initialize( sock )
+    def initialize( sock, debug=false )
       @sock = sock
+      @debug = debug
     end
     
     def read_command
@@ -29,7 +30,7 @@ module TOGoS ; module GeneratorFS
     
     def write_line( cmd, *args )
       line = GeneratorFS.detokenize( [cmd, *args] )
-      STDERR.puts( "#{$0}: writing line: #{line}" );
+      STDERR.puts( "#{$0}: writing line: #{line}" ) if @debug
       @sock.puts line
     end
     
@@ -83,18 +84,19 @@ module TOGoS ; module GeneratorFS
   class TestServer
     def initialize
       @port = 23823
+      @debug = false
     end
     
-    attr_accessor :port
+    attr_accessor :port, :debug
     
     def run
       serv = TCPServer.new('127.0.0.1',@port)
       while s = serv.accept
         Thread.new( s ) { |sock|
-          cs = ClientSocket.new(sock) 
+          cs = ClientSocket.new(sock, @debug)
           begin
             loine = cs.read_command
-            STDERR.puts "Received "+GeneratorFS.detokenize(loine)
+            STDERR.puts "#{$0}: received "+GeneratorFS.detokenize(loine) if @debug
             case loine[0]
             when 'GET-STAT'
               case loine[1]
@@ -217,6 +219,8 @@ if __FILE__ == $0
       timeout = args.shift.to_f
     when '-port'
       ts.port = args.shift.to_i
+    when '-debug'
+      ts.debug = true
     else
       STDERR.puts "Unrecognised arg #{arg}"
       exit 1
