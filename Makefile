@@ -2,16 +2,22 @@
 GCC_FLAGS = -Wall `pkg-config fuse --cflags --libs`
 CC = gcc ${GCC_FLAGS}
 
-GCC_OBJ_FLAGS = -Wall `pkg-config fuse --cflags`
+GCC_OBJ_FLAGS = -c -Wall `pkg-config fuse --cflags`
 CC_OBJ = gcc ${GCC_OBJ_FLAGS}
 
-build/FileRequestor.o: src/FileRequestor.c src/FileRequestor.h
-	mkdir -p build
-	${CC_OBJ} -c -o build/FileRequestor.o src/FileRequestor.c
+all: build/fusetest build/genfs
 
 build/Tokenizer.o: src/Tokenizer.c src/Tokenizer.h
 	mkdir -p build
-	${CC_OBJ} -c -o build/Tokenizer.o src/Tokenizer.c
+	${CC_OBJ} -o build/Tokenizer.o src/Tokenizer.c
+
+build/FileRequestor.o: src/FileRequestor.c src/FileRequestor.h
+	mkdir -p build
+	${CC_OBJ} -o build/FileRequestor.o src/FileRequestor.c
+
+build/TokenizerTest: build/Tokenizer.o src/TokenizerTest.c
+	mkdir -p build
+	${CC} -o build/TokenizerTest src/TokenizerTest.c build/Tokenizer.o
 
 build/FileRequestorTest: build/FileRequestor.o build/Tokenizer.o src/FileRequestorTest.c
 	mkdir -p build
@@ -21,17 +27,17 @@ build/FileRequestorTest2: build/FileRequestor.o build/Tokenizer.o src/FileReques
 	mkdir -p build
 	${CC} -o build/FileRequestorTest2 src/FileRequestorTest2.c build/FileRequestor.o build/Tokenizer.o
 
-build/TokenizerTest: build/Tokenizer.o src/TokenizerTest.c
-	mkdir -p build
-	${CC} -o build/TokenizerTest src/TokenizerTest.c build/Tokenizer.o
-
 build/stats:
 	mkdir -p build
 	${CC} -o build/stats src/stats.c
 
 build/fusetest:
 	mkdir -p build
-	${CC} src/fusetest.c -o build/fusetest
+	${CC} -o build/fusetest src/fusetest.c
+
+build/genfs: src/genfs.c build/Tokenizer.o build/FileRequestor.o
+	mkdir -p build
+	${CC} -o build/genfs src/genfs.c build/Tokenizer.o build/FileRequestor.o
 
 clean:
 	rm -rf build
@@ -43,5 +49,3 @@ test: build/TokenizerTest build/FileRequestorTest build/FileRequestorTest2
 
 stats: build/stats
 	build/stats
-
-all: build/fusetest build/FileRequestorTest

@@ -13,6 +13,16 @@
 #include "FileRequestor.h"
 #include "Tokenizer.h"
 
+static int FileRequestor_read_fully( int fd, char *buf, int bufsize ) {
+  int readed = 0;
+  int z = 1;
+  do {
+    z = read( fd, buf+readed, bufsize-readed );
+    if( z > 0 ) readed += z;
+  } while( z > 0 && readed < bufsize-1 );
+  return readed;
+}
+
 int FileRequestor_init( struct FileRequestor *r, const char *hostname, short int port ) {
   r->hostname = hostname;
   r->port = port;
@@ -22,6 +32,8 @@ int FileRequestor_init( struct FileRequestor *r, const char *hostname, short int
 int FileRequestor_parse_error( struct TokenList *rts ) {
   if( rts->token_count >= 1 && strcmp("DOES-NOT-EXIST",rts->tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_DOES_NOT_EXIST;
+  } else if( rts->token_count >= 1 && strcmp("CLIENT-ERROR",rts->tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_CLIENT_ERROR;
   } else if( rts->token_count >= 1 && strcmp("SERVER-ERROR",rts->tokens[0]) == 0 ) {
     return FILEREQUESTOR_RESULT_SERVER_ERROR;
   } else if( rts->token_count >= 1 && strcmp("INVALID-OPERATION",rts->tokens[0]) == 0 ) {
@@ -34,14 +46,10 @@ int FileRequestor_parse_error( struct TokenList *rts ) {
 }
 
 static void FileRequestor_chomp_line( char *l ) {
- check: switch( *l ) {
-  case( '\r' ): case('\n'):
-    *l = 0;
-  case( 0 ):
-    return;
-  default:
-    ++l;
-    goto check;
+  for( ; *l != 0; ++l ) {
+    if( *l == '\r' || *l == '\n' ) {
+      *l = 0; return;
+    }
   }
 }
 
@@ -58,8 +66,6 @@ static int FileRequestor_open_control( struct FileRequestor *r ) {
     errno = EAFNOSUPPORT;
     return GENFS_RESULT_IO_ERROR;
   }
-  
-  // warn( "IP addy = %08lx, port = 0x%04hx, port support = %04hx", (unsigned long)sa.sin_addr.s_addr, sa.sin_port, r->port );
   
   socketfd = socket( PF_INET, SOCK_STREAM, IPPROTO_TCP );
   if( socketfd < 0 ) return GENFS_RESULT_IO_ERROR;
@@ -150,8 +156,8 @@ static int FileRequestor_open_file( struct FileRequestor *r, const char *command
   if( controlsock < 0 ) return GENFS_RESULT_IO_ERROR;
   
   write( controlsock, buffer, written );
-  readed = read( controlsock, buffer, sizeof buffer - 1 );
-  if( readed < 0 ) {
+  readed = FileRequestor_read_fully( controlsock, buffer, sizeof buffer - 1 );
+  if( readed <= 0 ) {
     errstash = errno;
     close( controlsock );
     errno = errstash;
@@ -171,6 +177,8 @@ static int FileRequestor_close_file( struct FileRequestor *r, const char *comman
   int written;
   int errstash;
   ssize_t readed;
+  int z;
+  struct TokenList rts;
   
   written = snprintf( buffer, sizeof buffer, "%s \"%s\" \"%s\"\n", command, infilename, outfilename );
   if( written >= sizeof buffer ) {
@@ -181,8 +189,8 @@ static int FileRequestor_close_file( struct FileRequestor *r, const char *comman
   if( controlsock < 0 ) return GENFS_RESULT_IO_ERROR;
   
   write( controlsock, buffer, written );
-  readed = read( controlsock, buffer, sizeof buffer - 1 );
-  if( readed < 0 ) {
+  readed = FileRequestor_read_fully( controlsock, buffer, sizeof buffer - 1 );
+  if( readed <= 0 ) {
     errstash = errno;
     close( controlsock );
     errno = errstash;
@@ -193,7 +201,18 @@ static int FileRequestor_close_file( struct FileRequestor *r, const char *comman
     return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
   }
   FileRequestor_chomp_line( buffer );
-  return FileRequestor_parse_close_file_result( buffer );
+  
+  z = Tokenizer_tokenize( buffer, &rts );
+  if( z != 0 ) return z;
+  if( rts.token_count == 0 ) {
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+  }
+  
+  if( rts.token_count == 1 && strcmp("OK-CLOSED",rts.tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_OK;
+  } else {
+    return FileRequestor_parse_error( &rts );
+  }
 }
 
 int FileRequestor_open_read( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
@@ -202,6 +221,50 @@ int FileRequestor_open_read( struct FileRequestor *r, const char *infilename, ch
 
 int FileRequestor_close_read( struct FileRequestor *r, const char *infilename, const char *outfilename ) {
   return FileRequestor_close_file( r, "CLOSE-READ", infilename, outfilename );
+}
+
+int FileRequestor_create( struct FileRequestor *r, const char *path, int mode ) {
+  int controlsock;
+  char buffer[1024];
+  int written;
+  int errstash;
+  ssize_t readed;
+  int z;
+  struct TokenList rts;
+  
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\" 0%o\n", "CREATE", path, mode );
+  if( written >= sizeof buffer ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+
+  controlsock = FileRequestor_open_control( r );
+  if( controlsock < 0 ) return GENFS_RESULT_IO_ERROR;
+  
+  write( controlsock, buffer, written );
+  readed = FileRequestor_read_fully( controlsock, buffer, sizeof buffer - 1 );
+  if( readed <= 0 ) {
+    errstash = errno;
+    close( controlsock );
+    errno = errstash;
+    return GENFS_RESULT_IO_ERROR;
+  }
+  close( controlsock );
+  if( readed >= sizeof buffer - 1 ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+  FileRequestor_chomp_line( buffer );
+  
+  z = Tokenizer_tokenize( buffer, &rts );
+  if( z != 0 ) return z;
+  if( rts.token_count == 0 ) {
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+  }
+  
+  if( rts.token_count == 1 && strcmp("OK-CREATED",rts.tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_OK;
+  } else {
+    return FileRequestor_parse_error( &rts );
+  }
 }
 
 int FileRequestor_open_write( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
@@ -236,8 +299,8 @@ int FileRequestor_get_stat( struct FileRequestor *r, const char *path, struct st
   
   write( controlsock, buffer, written );
   
-  readed = read( controlsock, buffer, sizeof buffer - 1 );
-  if( readed < 0 ) {
+  readed = FileRequestor_read_fully( controlsock, buffer, sizeof buffer - 1 );
+  if( readed <= 0 ) {
     errstash = errno;
     close( controlsock );
     errno = errstash;
@@ -248,7 +311,7 @@ int FileRequestor_get_stat( struct FileRequestor *r, const char *path, struct st
   if( readed >= sizeof buffer - 1 ) {
     return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
   }
-
+  
   FileRequestor_chomp_line( buffer );
   z = Tokenizer_tokenize( buffer, &rts );
   if( z != 0 ) return z;

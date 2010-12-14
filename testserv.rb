@@ -7,6 +7,13 @@ require 'fileutils'
 Thread.abort_on_exception = true
 
 module TOGoS ; module GeneratorFS
+  def self.detokenize( tokens )
+    return tokens.collect { |a|
+      a = a.to_s
+      a =~ /[\s"\\]/ ? a.inspect : a
+    }.join(' ')
+  end
+  
   class ClientSocket
     def initialize( sock )
       @sock = sock
@@ -20,12 +27,9 @@ module TOGoS ; module GeneratorFS
       return loine
     end
     
-    def write_line( *args )
-      line = args.collect { |a|
-        a = a.to_s
-        a =~ /[\s"\\]/ ? a.inspect : a
-      }.join(' ')
-      # STDERR.puts( "#{$0}: writing line: #{line}" );
+    def write_line( cmd, *args )
+      line = GeneratorFS.detokenize( [cmd, *args] )
+      STDERR.puts( "#{$0}: writing line: #{line}" );
       @sock.puts line
     end
     
@@ -57,6 +61,10 @@ module TOGoS ; module GeneratorFS
       write_line 'DIR-ENTRY', name, size, mode
     end
     
+    def write_ok_created
+      write_line 'OK-CREATED'
+    end
+    
     def write_ok_alias( dest )
       write_line 'OK-ALIAS', dest
     end
@@ -86,6 +94,7 @@ module TOGoS ; module GeneratorFS
           cs = ClientSocket.new(sock) 
           begin
             loine = cs.read_command
+            STDERR.puts "Received "+GeneratorFS.detokenize(loine)
             case loine[0]
             when 'GET-STAT'
               case loine[1]
@@ -104,28 +113,39 @@ module TOGoS ; module GeneratorFS
               when '/server-error'
                 cs.write_server_error
               else
-                cs.write_does_not_exist
+                if File.exist? 'temp'+loine[1]
+                  stat = File.stat('temp'+loine[1])
+                  cs.write_stat stat.size, sprintf("0%o",stat.mode)
+                else
+                  cs.write_does_not_exist
+                end
               end
-            when 'OPEN-READ', 'OPEN-WRITE'
+            when 'OPEN-READ'
               case loine[1]
               when nil
                 cs.write_client_error "Missing argument to OPEN-READ"
               when '/'
                 cs.write_invalid_operation
               when '/test1.txt'
+                FileUtils.mkdir_p('test-data')
+                open( 'test-data/test1.txt', 'w' ) do |s|
+                  s.write( ("test1 test1 test1\n"*8)[0..127]+"\n" )
+                end
                 cs.write_ok_alias 'test-data/test1.txt'
               when '/subdir'
                 cs.write_invalid_operation
               when '/subdir/test2.txt'
+                FileUtils.mkdir_p('test-data')
+                open( 'test-data/test2.txt', 'w' ) do |s|
+                  s.write( ("test2 test2 test2 test2\n"*20)[0..699]+"\n" )
+                end
                 cs.write_ok_alias 'test-data/test2.txt'
               when '/secret.txt'
                 cs.write_permission_denied
               when '/server-error'
                 cs.write_server_error
               else
-                if loine[0] == 'OPEN-WRITE'
-                  cs.write_ok_alias 'temp'+loine[1]
-                elsif File.exist? 'temp'+loine[1]
+                if File.exist? 'temp'+loine[1]
                   cs.write_ok_alias 'temp'+loine[1]
                 else
                   cs.write_does_not_exist
@@ -133,6 +153,17 @@ module TOGoS ; module GeneratorFS
               end
             when 'CLOSE-READ'
               cs.write_line 'OK-CLOSED'
+            #when 'CREATE'
+            #  fn = loine[1]
+            #  open( 'temp'+loine[1], 'w' ) {}
+            #  cs.write_ok_created
+            when 'OPEN-WRITE'
+              realfile = 'temp'+loine[1]
+              unless File.exist? realfile
+              # Need to create it for them....
+                open( realfile, 'w' ) {}
+              end
+              cs.write_ok_alias realfile
             when 'CLOSE-WRITE'
               if File.exist? loine[2]
                 cs.write_line 'OK-CLOSED'

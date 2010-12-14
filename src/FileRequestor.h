@@ -13,6 +13,7 @@ int FileRequestor_init( struct FileRequestor *r, const char *hostname, short int
 int FileRequestor_get_stat( struct FileRequestor *r, const char *infilename, struct stat *st );
 int FileRequestor_open_read( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamebufferlength );
 int FileRequestor_close_read( struct FileRequestor *r, const char *infilename, const char *outfilename );
+int FileRequestor_create( struct FileRequestor *r, const char *infilename, int mode );
 int FileRequestor_open_write( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamebufferlength );
 int FileRequestor_close_write( struct FileRequestor *r, const char *infilename, const char *outfilename );
 int FileRequestor_read_dir( struct FileRequestor *r, const char *infilename, void *filler_dat, fuse_fill_dir_t filler );

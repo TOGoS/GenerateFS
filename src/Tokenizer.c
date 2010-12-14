@@ -1,5 +1,8 @@
+#include <err.h>
 #include "genfs-errors.h"
 #include "Tokenizer.h"
+
+int Tokenizer_logging = 0;
 
 int Tokenizer_tokenize( const char *input, struct TokenList *tokenlist ) {
   int i;
@@ -22,14 +25,20 @@ int Tokenizer_tokenize( const char *input, struct TokenList *tokenlist ) {
       
       quotemode = !quotemode;
       if( quotemode ) {
-	if( readingtoken ) return TOKENIZER_RESULT_MALFORMED_INPUT;
+	if( readingtoken ) {
+	  if( Tokenizer_logging ) warn("Found quote after token started in '%s'", input);
+	  return TOKENIZER_RESULT_MALFORMED_INPUT;
+	}
 	tokenlist->tokens[tokenlist->token_count] = &tokenlist->buffer[bufferoffset];
 	readingtoken = 1;
       }
       break;
     case('\\'):
       if( bsmode ) goto appendchar;
-      if( !quotemode ) return TOKENIZER_RESULT_MALFORMED_INPUT;
+      if( !quotemode ) {
+	if( Tokenizer_logging ) warn("Found backslash in non-quoted token '%s'", input);
+	return TOKENIZER_RESULT_MALFORMED_INPUT;
+      }
       bsmode = 1;
       break;
     case(' '): case('\t'): case('\r'): case('\n'):
@@ -50,6 +59,7 @@ int Tokenizer_tokenize( const char *input, struct TokenList *tokenlist ) {
 	case('r'): c = '\r'; break;
 	case('t'): c = '\t'; break;
 	default:
+	  if( Tokenizer_logging ) warn("Found invalid escape char '%c' in '%s'",c,input);
 	  return TOKENIZER_RESULT_MALFORMED_INPUT;
 	}
 	bsmode = 0;
@@ -71,7 +81,12 @@ int Tokenizer_tokenize( const char *input, struct TokenList *tokenlist ) {
     }
     return TOKENIZER_RESULT_UNKNOWN_ERROR;
   }
-  if( quotemode || bsmode ) {
+  if( bsmode ) {
+    if( Tokenizer_logging ) warn("Reached end of input before backslashed character in '%s'", input);
+    return TOKENIZER_RESULT_MALFORMED_INPUT;
+  }
+  if( quotemode ) {
+    if( Tokenizer_logging ) warn("Reached end of input before end of quoted token in '%s'", input);
     return TOKENIZER_RESULT_MALFORMED_INPUT;
   }
   if( readingtoken ) {
