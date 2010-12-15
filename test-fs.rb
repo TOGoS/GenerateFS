@@ -42,11 +42,10 @@ end
 
 Thread.abort_on_exception = true
 
-FileUtils.mkdir_p( 'fusetest-dir' )
-
 debug = false
 filesystem = nil
 usetestserver = false
+mountpoint = nil
 
 args = $*.clone
 while arg = args.shift
@@ -57,7 +56,17 @@ while arg = args.shift
     usetestserver = true
   when '-fs'
     filesystem = args.shift
+  when /^[^-]/
+    mountpoint = arg
+  else
+    STDERR.puts "#{$0}: Unrecognised argument: #{arg}"
+    exit 1
   end
+end
+
+unless mountpoint
+  STDERR.puts "No mountpoint specified (specify with bare argument)"
+  exit 1
 end
 
 unless filesystem
@@ -70,7 +79,7 @@ if debug
   fuseargs << '-d'
 end
 fuseargs << '-f'
-fuseargs << 'fusetest-dir'
+fuseargs << mountpoint
 
 begin
   if usetestserver
@@ -91,7 +100,7 @@ begin
   end
   sleep 0.25 # give it time to start...
   
-  barfile = 'fusetest-dir/bar'
+  barfile = "#{mountpoint}/bar"
   
   if File.exist? barfile
     phail "#{barfile} already exists, but was expected not to."

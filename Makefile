@@ -7,6 +7,8 @@ CC_OBJ = gcc ${GCC_OBJ_FLAGS}
 
 RUBY = ruby -Ilib/ruby
 
+mountpoint = testmount
+
 all: build/fusetest build/genfs
 
 build/Tokenizer.o: src/Tokenizer.c src/Tokenizer.h
@@ -48,8 +50,10 @@ test: build/TokenizerTest build/FileRequestorTest build/FileRequestorTest2 build
 	build/TokenizerTest
 	build/FileRequestorTest
 	build/FileRequestorTest2
-	${RUBY} test-fs.rb -fs build/fusetest
-	${RUBY} test-fs.rb -use-testserver -fs build/genfs
+	mkdir -p ${mountpoint}
+	rm -f ${mountpoint}/*
+	${RUBY} test-fs.rb -fs build/fusetest ${mountpoint}
+	${RUBY} test-fs.rb -use-testserver -fs build/genfs ${mountpoint}
 
 stats: build/stats
 	build/stats
