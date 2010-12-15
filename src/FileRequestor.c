@@ -140,14 +140,21 @@ int FileRequestor_parse_dir_entries( FILE *stream, void *filler_dat, fuse_fill_d
   return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
 }
 
-static int FileRequestor_open_file( struct FileRequestor *r, const char *command, const char *infilename, char *outfilename, int outfilenamelength ) {
+static int FileRequestor_open_file( struct FileRequestor *r, const char *command, const char *infilename,
+				    char *outfilename, int outfilenamelength,
+				    int createmode
+) {
   int controlsock;
   char buffer[1024];
   int written;
   int errstash;
   ssize_t readed;
   
-  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", command, infilename );
+  if( createmode == -1 ) {
+    written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", command, infilename );
+  } else {
+    written = snprintf( buffer, sizeof buffer, "%s \"%s\" 0%o\n", command, infilename, createmode );
+  }
   if( written >= sizeof buffer ) {
     return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
   }
@@ -216,13 +223,14 @@ static int FileRequestor_close_file( struct FileRequestor *r, const char *comman
 }
 
 int FileRequestor_open_read( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
-  return FileRequestor_open_file( r, "OPEN-READ", infilename, outfilename, outfilenamelength );
+  return FileRequestor_open_file( r, "OPEN-READ", infilename, outfilename, outfilenamelength, -1 );
 }
 
 int FileRequestor_close_read( struct FileRequestor *r, const char *infilename, const char *outfilename ) {
   return FileRequestor_close_file( r, "CLOSE-READ", infilename, outfilename );
 }
 
+/*
 int FileRequestor_create( struct FileRequestor *r, const char *path, int mode ) {
   int controlsock;
   char buffer[1024];
@@ -266,9 +274,58 @@ int FileRequestor_create( struct FileRequestor *r, const char *path, int mode ) 
     return FileRequestor_parse_error( &rts );
   }
 }
+*/
+
+int FileRequestor_truncate( struct FileRequestor *r, const char *path ) {
+  int controlsock;
+  char buffer[1024];
+  int written;
+  int errstash;
+  ssize_t readed;
+  int z;
+  struct TokenList rts;
+  
+  written = snprintf( buffer, sizeof buffer, "%s \"%s\"\n", "TRUNCATE", path );
+  if( written >= sizeof buffer ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+
+  controlsock = FileRequestor_open_control( r );
+  if( controlsock < 0 ) return GENFS_RESULT_IO_ERROR;
+  
+  write( controlsock, buffer, written );
+  readed = FileRequestor_read_fully( controlsock, buffer, sizeof buffer - 1 );
+  if( readed <= 0 ) {
+    errstash = errno;
+    close( controlsock );
+    errno = errstash;
+    return GENFS_RESULT_IO_ERROR;
+  }
+  close( controlsock );
+  if( readed >= sizeof buffer - 1 ) {
+    return FILEREQUESTOR_RESULT_MESSAGE_TOO_LONG;
+  }
+  FileRequestor_chomp_line( buffer );
+  
+  z = Tokenizer_tokenize( buffer, &rts );
+  if( z != 0 ) return z;
+  if( rts.token_count == 0 ) {
+    return FILEREQUESTOR_RESULT_MALFORMED_RESPONSE;
+  }
+  
+  if( rts.token_count == 1 && strcmp("OK-TRUNCATED",rts.tokens[0]) == 0 ) {
+    return FILEREQUESTOR_RESULT_OK;
+  } else {
+    return FileRequestor_parse_error( &rts );
+  }
+}
+
+int FileRequestor_create_open_write( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength, int mode ) {
+  return FileRequestor_open_file( r, "CREATE+OPEN-WRITE", infilename, outfilename, outfilenamelength, mode );
+}
 
 int FileRequestor_open_write( struct FileRequestor *r, const char *infilename, char *outfilename, int outfilenamelength ) {
-  return FileRequestor_open_file( r, "OPEN-WRITE", infilename, outfilename, outfilenamelength );
+  return FileRequestor_open_file( r, "OPEN-WRITE", infilename, outfilename, outfilenamelength, -1 );
 }
 
 int FileRequestor_close_write( struct FileRequestor *r, const char *infilename, const char *outfilename ) {

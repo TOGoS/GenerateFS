@@ -79,12 +79,42 @@ static void remove_fd_name( int fd ) {
   warnx( "%d not found in fd name list", fd );
 }
 
+static void GeneratorFS_log_fuse_call_null( const char *fmt, ... ) {}
+#define GeneratorFS_log_fuse_call GeneratorFS_log_fuse_call_null
+
+static int GeneratorFS_handle_error( int z, const char *context, const char *path ) {
+  switch( z ) {
+  case( FILEREQUESTOR_RESULT_BAD_OPERATION ):
+    return -ENOTSUP;
+  case( FILEREQUESTOR_RESULT_DOES_NOT_EXIST ):
+    return -ENOENT;
+  case( FILEREQUESTOR_RESULT_PERMISSION_DENIED ):
+    return -EACCES;
+  case( GENFS_RESULT_IO_ERROR ):
+    if( path ) {
+      warn( "IO Error while %s '%s'", context, path );
+    } else {
+      warn( "IO Error in %s", context );
+    }
+    return -EIO;
+  default:
+    if( path ) {
+      warn( "GenFS error %d while %s '%s'", z, context, path );
+    } else {
+      warn( "GenFS error %d in %s", z, context );
+    }
+    return -EBADMSG;
+  }
+}
+
 static struct FileRequestor fr;
 
 static int GeneratorFS_getattr( const char *path, struct stat *stbuf ) {
-  int z = FileRequestor_get_stat( &fr, path, stbuf );
+  int z;
   
-  warnx( "_getattr '%s'", path );
+  GeneratorFS_log_fuse_call( "getattr '%s'", path );
+
+  z = FileRequestor_get_stat( &fr, path, stbuf );
   
   switch( z ) {
   case( FILEREQUESTOR_RESULT_OK ):
@@ -105,7 +135,7 @@ static int GeneratorFS_getattr( const char *path, struct stat *stbuf ) {
 }
 
 static int GeneratorFS_setxattr( const char *path, const char *uhm, const char *what, size_t urr, int hmmm ) {
-  warnx( "_setattr '%s'", path );
+  GeneratorFS_log_fuse_call( "setattr '%s'", path );
   
   return 0;
 }
@@ -115,7 +145,7 @@ static int GeneratorFS_readdir( const char *path, void *buf,
 ) {
   int z;
   
-  warnx( "_readdir '%s'", path );
+  GeneratorFS_log_fuse_call( "readdir '%s'", path );
   
   z = FileRequestor_read_dir( &fr, path, buf, filler );
   switch( z ) {
@@ -136,33 +166,20 @@ static int GeneratorFS_readdir( const char *path, void *buf,
   }
 }
 
-static int GeneratorFS_handle_open_error( const char *path, int z ) {
-  switch( z ) {
-  case( FILEREQUESTOR_RESULT_BAD_OPERATION ):
-    return -ENOTSUP;
-  case( FILEREQUESTOR_RESULT_DOES_NOT_EXIST ):
-    return -ENOENT;
-  case( FILEREQUESTOR_RESULT_PERMISSION_DENIED ):
-    return -EACCES;
-  case( GENFS_RESULT_IO_ERROR ):
-    warn( "IO Error while opening '%s'", path );
-    return -EIO;
-  default:
-    warnx( "Don't know how to turn result %d into an errno in open.", z );
-    return -EBADMSG;
-  }
-}
-
-static int GeneratorFS__open( const char *path, struct fuse_file_info *fi, int accmode ) {
+static int GeneratorFS__open( const char *path, struct fuse_file_info *fi, int filemode, int accmode ) {
   char realname[1024];
   int z;
   
-  warnx( "_open '%s' %d", path, accmode );
+  GeneratorFS_log_fuse_call( "open '%s' %d", path, accmode );
   
   if( accmode == O_RDONLY ) {
     z = FileRequestor_open_read( &fr, path, realname, sizeof realname );
   } else if( accmode == O_WRONLY ) {
-    z = FileRequestor_open_write( &fr, path, realname, sizeof realname );
+    if( filemode == -1 ) {
+      z = FileRequestor_open_write( &fr, path, realname, sizeof realname );
+    } else {
+      z = FileRequestor_create_open_write( &fr, path, realname, sizeof realname, filemode );
+    }
   } else {
     warn( "Tried to open '%s' with flags 0x%x; only O_RDONLY (0x%x), O_WRONLY (0x%x) supported.", path, fi->flags, O_RDONLY, O_WRONLY );
     return -ENOTSUP;
@@ -176,54 +193,33 @@ static int GeneratorFS__open( const char *path, struct fuse_file_info *fi, int a
     add_fd_name( fi->fh, realname );
     return 0;
   } else {
-    return GeneratorFS_handle_open_error( path, z );
+    return GeneratorFS_handle_error( z, "opening", path );
   }
 }
 
 static int GeneratorFS_open( const char *path, struct fuse_file_info *fi ) {
   int accmode = (fi->flags & O_ACCMODE);
-  return GeneratorFS__open( path, fi, accmode );
+  return GeneratorFS__open( path, fi, -1, accmode );
 }
 
 static int GeneratorFS_create( const char *path, mode_t mode, struct fuse_file_info *fi ) {
-  return GeneratorFS__open( path, fi, O_WRONLY );
-  /*
-  int z;
-  z = FileRequestor_create( &fr, path, mode );
-  
-  warnx( "_create '%s' 0%o", path, mode );
-  
-  switch( z ) {
-  case( FILEREQUESTOR_RESULT_OK ):
-    return 0;
-  case( FILEREQUESTOR_RESULT_BAD_OPERATION ):
-    return -ENOTSUP;
-  case( FILEREQUESTOR_RESULT_DOES_NOT_EXIST ):
-    return -ENOENT;
-  case( FILEREQUESTOR_RESULT_PERMISSION_DENIED ):
-    return -EACCES;
-  case( GENFS_RESULT_IO_ERROR ):
-    warn( "IO Error while creating '%s'", path );
-    return -EIO;
-  default:
-    warnx( "Don't know how to turn result %d into an errno in create.", z );
-    return -EBADMSG;
-  }
-  */
+  return GeneratorFS__open( path, fi, mode, O_WRONLY );
 }
 
 static int GeneratorFS_chmod( const char *path, mode_t mode ) {
   char realname[1024];
   int z;
   
-  warnx( "_chmod '%s' 0%o", path, (int)mode );
+  GeneratorFS_log_fuse_call( "chmod '%s' 0%o", path, (int)mode );
   
-  z = FileRequestor_open_write( &fr, path, realname, sizeof realname );
-  if( z ) {
-    return GeneratorFS_handle_open_error( path, z );
+  if( (z = FileRequestor_open_write( &fr, path, realname, sizeof realname )) ) {
+    return GeneratorFS_handle_error( z, "opening to chmod", path );
   }
   if( chmod( realname, mode ) ) {
     return -errno;
+  }
+  if( (z = FileRequestor_close_write( &fr, path, realname)) ) {
+    return GeneratorFS_handle_error( z, "closing after chmod", path );
   }
   return 0;
 }
@@ -232,14 +228,16 @@ static int GeneratorFS_chown( const char *path, uid_t uid, gid_t gid ) {
   char realname[1024];
   int z;
   
-  warnx( "_chown '%s' %d %d", path, (int)uid, (int)gid );
+  GeneratorFS_log_fuse_call( "chown '%s' %d %d", path, (int)uid, (int)gid );
   
-  z = FileRequestor_open_write( &fr, path, realname, sizeof realname );
-  if( z ) {
-    return GeneratorFS_handle_open_error( path, z );
+  if( (z = FileRequestor_open_write( &fr, path, realname, sizeof realname )) ) {
+    return GeneratorFS_handle_error( z, "opening to chown", path );
   }
   if( chown( realname, uid, gid ) ) {
     return -errno;
+  }
+  if( (z = FileRequestor_close_write( &fr, path, realname)) ) {
+    return GeneratorFS_handle_error( z, "closing after chown", path );
   }
   return 0;
 }
@@ -248,21 +246,23 @@ static int GeneratorFS_utime( const char *path, struct utimbuf *utim ) {
   char realname[1024];
   int z;
   
-  warnx( "_utime '%s'", path );
+  GeneratorFS_log_fuse_call( "utime '%s'", path );
   
-  z = FileRequestor_open_write( &fr, path, realname, sizeof realname );
-  if( z ) {
-    return GeneratorFS_handle_open_error( path, z );
+  if( (z = FileRequestor_open_write( &fr, path, realname, sizeof realname )) ) {
+    return GeneratorFS_handle_error( z, "opening to set utime", path );
   }
   if( utime( realname, utim ) ) {
     return -errno;
+  }
+  if( (z = FileRequestor_close_write( &fr, path, realname )) ) {
+    return GeneratorFS_handle_error( z, "closing after setting utime", path );
   }
   return 0;
 }
 
 static int GeneratorFS_read( const char *path, char *buf, size_t size,
 			     off_t offset, struct fuse_file_info *fi ) {
-  warnx( "_read '%s' %ld %d", path, (long)offset, (int)size );
+  GeneratorFS_log_fuse_call( "read '%s' %ld %d", path, (long)offset, (int)size );
   
   if( (int)fi->fh >= 0 ) {
     return (int)pread( fi->fh, buf, size, offset );
@@ -276,7 +276,7 @@ static int GeneratorFS_write( const char *path, const char *buf, size_t size,
 			      off_t offset, struct fuse_file_info *fi ) {
   int z;
   
-  warnx( "_write '%s' %ld %d", path, (long)offset, (int)size );
+  GeneratorFS_log_fuse_call( "write '%s' %ld %d", path, (long)offset, (int)size );
 
   if( (int)fi->fh >= 0 ) {
     /* ignoring offset! */
@@ -296,13 +296,18 @@ static int GeneratorFS_write( const char *path, const char *buf, size_t size,
 }
 
 static int GeneratorFS_truncate( const char *path, off_t offset, struct fuse_file_info *fi ) {
-  warnx( "_truncate '%s'", path );
+  int z;
   
+  GeneratorFS_log_fuse_call( "truncate '%s'", path );
+  
+  if( (z = FileRequestor_truncate( &fr, path )) ) {
+    return GeneratorFS_handle_error( z, "truncating", path );
+  }
   return 0;
 }
 
 static int GeneratorFS_fsync( const char *path, int sync, struct fuse_file_info *fi ) {
-  warnx( "_fsync '%s' %d", path, (int)fi->fh );
+  GeneratorFS_log_fuse_call( "fsync '%s' %d", path, (int)fi->fh );
   
   if( (int)fi->fh >= 0 ) {
     fsync( fi->fh );
@@ -313,7 +318,7 @@ static int GeneratorFS_fsync( const char *path, int sync, struct fuse_file_info 
 }
 
 static int GeneratorFS_flush( const char *path, struct fuse_file_info *fi ) {
-  warnx( "_flush '%s' %d", path, (int)fi->fh );
+  GeneratorFS_log_fuse_call( "flush '%s' %d", path, (int)fi->fh );
   
   return 0;
 }
@@ -323,7 +328,7 @@ static int GeneratorFS_release( const char *path, struct fuse_file_info *fi ) {
   int accmode = (fi->flags & O_ACCMODE);
   int z;
   
-  warnx( "_release '%s' %d", path, (int)fi->fh );
+  GeneratorFS_log_fuse_call( "release '%s' %d", path, (int)fi->fh );
   
   if( (int)fi->fh >= 0 ) {
     realname = get_fd_name( fi->fh );
@@ -357,7 +362,7 @@ static struct fuse_operations GeneratorFS_operations = {
   .setxattr  = GeneratorFS_setxattr,
   .readdir   = GeneratorFS_readdir,
   .create    = GeneratorFS_create,
-  .ftruncate = GeneratorFS_truncate,
+  .truncate  = GeneratorFS_truncate,
   .open      = GeneratorFS_open,
   .read      = GeneratorFS_read,
   .write     = GeneratorFS_write,

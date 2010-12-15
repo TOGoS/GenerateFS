@@ -5,6 +5,8 @@ CC = gcc ${GCC_FLAGS}
 GCC_OBJ_FLAGS = -c -Wall `pkg-config fuse --cflags`
 CC_OBJ = gcc ${GCC_OBJ_FLAGS}
 
+RUBY = ruby -Ilib/ruby
+
 all: build/fusetest build/genfs
 
 build/Tokenizer.o: src/Tokenizer.c src/Tokenizer.h
@@ -42,10 +44,12 @@ build/genfs: src/genfs.c build/Tokenizer.o build/FileRequestor.o
 clean:
 	rm -rf build
 
-test: build/TokenizerTest build/FileRequestorTest build/FileRequestorTest2
+test: build/TokenizerTest build/FileRequestorTest build/FileRequestorTest2 build/fusetest build/genfs
 	build/TokenizerTest
 	build/FileRequestorTest
 	build/FileRequestorTest2
+	${RUBY} test-fs.rb -fs build/fusetest
+	${RUBY} test-fs.rb -use-testserver -fs build/genfs
 
 stats: build/stats
 	build/stats

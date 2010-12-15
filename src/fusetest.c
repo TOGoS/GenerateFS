@@ -14,6 +14,7 @@
 
 const char *hello_str = "Hello, world!\n";
 char bartext[1024];
+int barexists = 0;
 int barlength = 0;
 
 static int fusetest_getattr( const char *path, struct stat *stbuf ) {
@@ -28,10 +29,14 @@ static int fusetest_getattr( const char *path, struct stat *stbuf ) {
     stbuf->st_size = strlen(hello_str);
     return 0;
   } else if( strcmp(path,"/bar") == 0 ) {
-    stbuf->st_mode = S_IFREG | 0644;
-    stbuf->st_nlink = 1;
-    stbuf->st_size = barlength;
-    return 0;
+    if( barexists ) {
+      stbuf->st_mode = S_IFREG | 0644;
+      stbuf->st_nlink = 1;
+      stbuf->st_size = barlength;
+      return 0;
+    } else {
+      return -ENOENT;
+    }
   } else {
     return -ENOENT;
   }
@@ -46,7 +51,9 @@ static int fusetest_readdir( const char *path, void *buf,
   filler(buf,".",NULL,0);
   filler(buf,"..",NULL,0);
   filler(buf,"foo",NULL,0);
-  filler(buf,"bar",NULL,0);
+  if( barexists ) {
+    filler(buf,"bar",NULL,0);
+  }
   return 0;
 }
 
@@ -54,10 +61,15 @@ static int fusetest_open( const char *path, struct fuse_file_info *fi ) {
   if( strcmp(path,"/foo") == 0 ) {
     if( (fi->flags &3) != O_RDONLY ) {
       return -EACCES;
+    } else {
+      return 0;
     }
-    return 0;
   } else if( strcmp(path,"/bar") == 0 ) {
-    return 0;
+    if( barexists ) {
+      return 0;
+    } else {
+      return -ENOENT;
+    }
   } else {
     return -ENOENT;
   }
@@ -86,6 +98,16 @@ static int fusetest_read( const char *path, char *buf, size_t size,
     return size;
   } else {
     return -ENOENT;
+  }
+}
+
+static int fusetest_create( const char *path, mode_t mode, struct fuse_file_info *fi ) {
+  if( strcmp(path,"/bar") == 0 ) {
+    barexists = 1;
+    barlength = 0;
+    return fusetest_open( path, fi );
+  } else {
+    return -EACCES;
   }
 }
 
@@ -118,12 +140,13 @@ static int fusetest_write( const char *path, char *buf, size_t size,
 }
 
 static struct fuse_operations fusetest_operations = {
-  .getattr = fusetest_getattr,
-  .readdir = fusetest_readdir,
+  .getattr  = fusetest_getattr,
+  .readdir  = fusetest_readdir,
+  .create   = fusetest_create,
   .truncate = fusetest_truncate,
-  .open    = fusetest_open,
-  .read    = fusetest_read,
-  .write   = fusetest_write,
+  .open     = fusetest_open,
+  .read     = fusetest_read,
+  .write    = fusetest_write,
 };
 
 int main( int argc, char **argv ) {

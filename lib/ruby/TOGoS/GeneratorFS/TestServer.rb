@@ -30,7 +30,7 @@ module TOGoS ; module GeneratorFS
     
     def write_line( cmd, *args )
       line = GeneratorFS.detokenize( [cmd, *args] )
-      STDERR.puts( "#{$0}: writing line: #{line}" ) if @debug
+      STDERR.puts( "TestServer: writing line: #{line}" ) if @debug
       @sock.puts line
     end
     
@@ -62,6 +62,10 @@ module TOGoS ; module GeneratorFS
       write_line 'DIR-ENTRY', name, size, mode
     end
     
+    def write_ok_truncated
+      write_line 'OK-TRUNCATED'
+    end
+    
     def write_ok_created
       write_line 'OK-CREATED'
     end
@@ -91,12 +95,14 @@ module TOGoS ; module GeneratorFS
     
     def run
       serv = TCPServer.new('127.0.0.1',@port)
+      STDERR.puts "TestServer: Listening for connections on #{@port}" if @debug
       while s = serv.accept
+        STDERR.puts "TestServer: Got connection from #{s.peeraddr[3]}" if @debug
         Thread.new( s ) { |sock|
           cs = ClientSocket.new(sock, @debug)
           begin
             loine = cs.read_command
-            STDERR.puts "#{$0}: received "+GeneratorFS.detokenize(loine) if @debug
+            STDERR.puts "TestServer: received "+GeneratorFS.detokenize(loine) if @debug
             case loine[0]
             when 'GET-STAT'
               case loine[1]
@@ -129,19 +135,19 @@ module TOGoS ; module GeneratorFS
               when '/'
                 cs.write_invalid_operation
               when '/test1.txt'
-                FileUtils.mkdir_p('test-data')
-                open( 'test-data/test1.txt', 'w' ) do |s|
+                FileUtils.mkdir_p('testdata')
+                open( 'testdata/test1.txt', 'w' ) do |s|
                   s.write( ("test1 test1 test1\n"*8)[0..127]+"\n" )
                 end
-                cs.write_ok_alias 'test-data/test1.txt'
+                cs.write_ok_alias 'testdata/test1.txt'
               when '/subdir'
                 cs.write_invalid_operation
               when '/subdir/test2.txt'
-                FileUtils.mkdir_p('test-data')
-                open( 'test-data/test2.txt', 'w' ) do |s|
+                FileUtils.mkdir_p('testdata')
+                open( 'testdata/test2.txt', 'w' ) do |s|
                   s.write( ("test2 test2 test2 test2\n"*20)[0..699]+"\n" )
                 end
-                cs.write_ok_alias 'test-data/test2.txt'
+                cs.write_ok_alias 'testdata/test2.txt'
               when '/secret.txt'
                 cs.write_permission_denied
               when '/server-error'
@@ -155,11 +161,15 @@ module TOGoS ; module GeneratorFS
               end
             when 'CLOSE-READ'
               cs.write_line 'OK-CLOSED'
+            when 'TRUNCATE'
+              realfile = 'temp'+loine[1]
+              open( realfile, 'w' ) {}
+              cs.write_ok_truncated
             #when 'CREATE'
             #  fn = loine[1]
             #  open( 'temp'+loine[1], 'w' ) {}
             #  cs.write_ok_created
-            when 'OPEN-WRITE'
+            when 'CREATE+OPEN-WRITE', 'OPEN-WRITE'
               realfile = 'temp'+loine[1]
               unless File.exist? realfile
               # Need to create it for them....

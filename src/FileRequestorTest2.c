@@ -131,7 +131,7 @@ void test_read_directory( struct FileRequestor *fr ) {
 pid_t start_server() {
   pid_t cid;
   if( (cid = fork()) == 0 ) {
-    if( execlp( "ruby", "testserv.rb", "testserv.rb", "-timeout", "5", "-port", "23823", NULL ) == -1 ) {
+    if( execlp( "ruby", "ruby", "lib/ruby/TOGoS/GeneratorFS/TestServer.rb", "-timeout", "5", "-port", "23823", NULL ) == -1 ) {
       err( 1, "Failed to start server" );
     }
     return -1; // should only get here on error
@@ -243,8 +243,8 @@ int main( int argc, char **argv ) {
     if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
   }
-  if( strcmp("test-data/test1.txt",outfilename) != 0 ) {
-    errx( 1, "Expected '%s', got '%s', %s:%d", "test-data/test1.txt", outfilename, __FILE__, __LINE__ );
+  if( strcmp("testdata/test1.txt",outfilename) != 0 ) {
+    errx( 1, "Expected '%s', got '%s', %s:%d", "testdata/test1.txt", outfilename, __FILE__, __LINE__ );
   }
   
   z = FileRequestor_open_read( &fr, "/subdir/test2.txt", outfilename, sizeof outfilename );
@@ -252,8 +252,8 @@ int main( int argc, char **argv ) {
     if( z == GENFS_RESULT_IO_ERROR ) warn( "IO Error" );
     errx( 1, "Expected %d, got %d, %s:%d", FILEREQUESTOR_RESULT_OK, z, __FILE__, __LINE__ );
   }
-  if( strcmp("test-data/test2.txt",outfilename) != 0 ) {
-    errx( 1, "Expected '%s', got '%s', %s:%d", "test-data/test2.txt", outfilename, __FILE__, __LINE__ );
+  if( strcmp("testdata/test2.txt",outfilename) != 0 ) {
+    errx( 1, "Expected '%s', got '%s', %s:%d", "testdata/test2.txt", outfilename, __FILE__, __LINE__ );
   }
 
   z = FileRequestor_close_read( &fr, "/subdir/test2.txt", outfilename );

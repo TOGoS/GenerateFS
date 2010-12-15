@@ -87,8 +87,8 @@ void test_read_directory() {
   };
   int z;
   
-  if( (dirstream = fopen("test-dir.txt","r")) == NULL ) {
-    err( 1, "Couldn't open test-dir.txt, at %s:%d", __FILE__, __LINE__ );
+  if( (dirstream = fopen("testdir.txt","r")) == NULL ) {
+    err( 1, "Couldn't open testdir.txt, at %s:%d", __FILE__, __LINE__ );
   }
   fgets( buf4skip, sizeof buf4skip, dirstream );
   z = FileRequestor_parse_dir_entries( dirstream, &tr, trd_filler );
