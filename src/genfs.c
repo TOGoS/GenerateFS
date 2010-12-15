@@ -375,6 +375,22 @@ static struct fuse_operations GeneratorFS_operations = {
 };
 
 int main( int argc, char **argv ) {
-  FileRequestor_init( &fr, "127.0.0.1", 23823 );
-  return fuse_main( argc, argv, &GeneratorFS_operations, NULL );
+  struct fuse_args args = FUSE_ARGS_INIT(0,NULL);
+  int i;
+  char host[128];
+  int port;
+
+  strcpy(host,"127.0.0.1");
+  port = 23823;
+  
+  for( i=0; i<argc; ++i ) {
+    if( sscanf(argv[i],"--server-host=%128s",host) ) {
+    } else if( sscanf(argv[i],"--server-port=%d",&port) ) {
+    } else {
+      fuse_opt_add_arg( &args, argv[i] );
+    }
+  }
+  
+  FileRequestor_init( &fr, host, port );
+  return fuse_main( args.argc, args.argv, &GeneratorFS_operations, NULL );
 }

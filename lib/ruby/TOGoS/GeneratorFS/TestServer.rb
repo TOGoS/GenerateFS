@@ -87,14 +87,15 @@ module TOGoS ; module GeneratorFS
   
   class TestServer
     def initialize
+      @host = '127.0.0.1'
       @port = 23823
       @debug = false
     end
     
-    attr_accessor :port, :debug
+    attr_accessor :host, :port, :debug
     
     def run
-      serv = TCPServer.new('127.0.0.1',@port)
+      serv = TCPServer.new(@host,@port)
       STDERR.puts "TestServer: Listening for connections on #{@port}" if @debug
       while s = serv.accept
         STDERR.puts "TestServer: Got connection from #{s.peeraddr[3]}" if @debug

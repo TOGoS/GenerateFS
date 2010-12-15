@@ -46,12 +46,18 @@ debug = false
 filesystem = nil
 usetestserver = false
 mountpoint = nil
+host = '127.0.0.1'
+port = 23823
 
 args = $*.clone
 while arg = args.shift
   case arg
   when '-debug'
     debug = true
+  when '-host'
+    host = args.shift
+  when '-port'
+    port = args.shift.to_i
   when '-use-testserver'
     usetestserver = true
   when '-fs'
@@ -75,6 +81,10 @@ unless filesystem
 end
 
 fuseargs = []
+if usetestserver
+  fuseargs << "--server-host=#{host}"
+  fuseargs << "--server-port=#{port}"
+end
 if debug
   fuseargs << '-d'
 end
@@ -86,6 +96,8 @@ begin
     serverpid = fork do
       require 'TOGoS/GeneratorFS/TestServer';
       server = TOGoS::GeneratorFS::TestServer.new
+      server.host = host
+      server.port = port
       server.debug = debug
       #STDERR.puts "Starting testserver..."
       server.run

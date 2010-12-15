@@ -53,7 +53,7 @@ test: build/TokenizerTest build/FileRequestorTest build/FileRequestorTest2 build
 	mkdir -p ${mountpoint}
 	rm -f ${mountpoint}/*
 	${RUBY} test-fs.rb -fs build/fusetest ${mountpoint}
-	${RUBY} test-fs.rb -use-testserver -fs build/genfs ${mountpoint}
+	${RUBY} test-fs.rb -use-testserver -host 127.0.0.1 -port 23824 -fs build/genfs ${mountpoint}
 
 stats: build/stats
 	build/stats
