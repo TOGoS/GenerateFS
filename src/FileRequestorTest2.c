@@ -131,7 +131,7 @@ void test_read_directory( struct FileRequestor *fr ) {
 pid_t start_server() {
   pid_t cid;
   if( (cid = fork()) == 0 ) {
-    if( execlp( "ruby", "ruby", "lib/ruby/TOGoS/GeneratorFS/TestServer.rb", "-timeout", "5", "-port", "23823", NULL ) == -1 ) {
+    if( execlp( "ruby", "ruby", "lib/ruby/TOGoS/GeneratorFS/TestServer.rb", "-timeout", "5", "-port", "23821", NULL ) == -1 ) {
       err( 1, "Failed to start server" );
     }
     return -1; // should only get here on error
@@ -167,7 +167,7 @@ int main( int argc, char **argv ) {
   
   /* Test read directories */
   
-  FileRequestor_init( &fr, "127.0.0.1", 23823 );
+  FileRequestor_init( &fr, "127.0.0.1", 23821 );
   test_read_directory( &fr );
   
   z = FileRequestor_read_dir( &fr, "/doesnotexist", NULL, null_trd_filler );
