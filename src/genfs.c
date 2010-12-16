@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
@@ -79,8 +80,18 @@ static void remove_fd_name( int fd ) {
   warnx( "%d not found in fd name list", fd );
 }
 
-static void GeneratorFS_log_fuse_call_null( const char *fmt, ... ) {}
-#define GeneratorFS_log_fuse_call GeneratorFS_log_fuse_call_null
+static int moar_debug = 0;
+
+static void GeneratorFS_log_fuse_call( const char *fmt, ... ) {
+  va_list args;
+  if( moar_debug ) {
+    fputs( "*", stderr ); 
+    va_start( args, fmt );
+    vfprintf( stderr, fmt, args );
+    fputs( "\n", stderr );
+    va_end( args );
+  }
+}
 
 static int GeneratorFS_handle_error( int z, const char *context, const char *path ) {
   switch( z ) {
@@ -170,7 +181,7 @@ static int GeneratorFS__open( const char *path, struct fuse_file_info *fi, int f
   char realname[1024];
   int z;
   
-  GeneratorFS_log_fuse_call( "open '%s' %d", path, accmode );
+  GeneratorFS_log_fuse_call( "open '%s' accmode=%d", path, accmode );
   
   if( accmode == O_RDONLY ) {
     z = FileRequestor_open_read( &fr, path, realname, sizeof realname );
@@ -228,7 +239,7 @@ static int GeneratorFS_chown( const char *path, uid_t uid, gid_t gid ) {
   char realname[1024];
   int z;
   
-  GeneratorFS_log_fuse_call( "chown '%s' %d %d", path, (int)uid, (int)gid );
+  GeneratorFS_log_fuse_call( "chown '%s' uid=%d gid=%d", path, (int)uid, (int)gid );
   
   if( (z = FileRequestor_open_write( &fr, path, realname, sizeof realname )) ) {
     return GeneratorFS_handle_error( z, "opening to chown", path );
@@ -262,7 +273,7 @@ static int GeneratorFS_utime( const char *path, struct utimbuf *utim ) {
 
 static int GeneratorFS_read( const char *path, char *buf, size_t size,
 			     off_t offset, struct fuse_file_info *fi ) {
-  GeneratorFS_log_fuse_call( "read '%s' %ld %d", path, (long)offset, (int)size );
+  GeneratorFS_log_fuse_call( "read '%s' off=%ld size=%d", path, (long)offset, (int)size );
   
   if( (int)fi->fh >= 0 ) {
     return (int)pread( fi->fh, buf, size, offset );
@@ -276,7 +287,7 @@ static int GeneratorFS_write( const char *path, const char *buf, size_t size,
 			      off_t offset, struct fuse_file_info *fi ) {
   int z;
   
-  GeneratorFS_log_fuse_call( "write '%s' %ld %d", path, (long)offset, (int)size );
+  GeneratorFS_log_fuse_call( "write '%s' off=%ld size=%d", path, (long)offset, (int)size );
 
   if( (int)fi->fh >= 0 ) {
     /* ignoring offset! */
@@ -307,7 +318,7 @@ static int GeneratorFS_truncate( const char *path, off_t offset, struct fuse_fil
 }
 
 static int GeneratorFS_fsync( const char *path, int sync, struct fuse_file_info *fi ) {
-  GeneratorFS_log_fuse_call( "fsync '%s' %d", path, (int)fi->fh );
+  GeneratorFS_log_fuse_call( "fsync '%s' fh=%d", path, (int)fi->fh );
   
   if( (int)fi->fh >= 0 ) {
     fsync( fi->fh );
@@ -318,7 +329,7 @@ static int GeneratorFS_fsync( const char *path, int sync, struct fuse_file_info 
 }
 
 static int GeneratorFS_flush( const char *path, struct fuse_file_info *fi ) {
-  GeneratorFS_log_fuse_call( "flush '%s' %d", path, (int)fi->fh );
+  GeneratorFS_log_fuse_call( "flush '%s' fh=%d", path, (int)fi->fh );
   
   return 0;
 }
@@ -328,7 +339,7 @@ static int GeneratorFS_release( const char *path, struct fuse_file_info *fi ) {
   int accmode = (fi->flags & O_ACCMODE);
   int z;
   
-  GeneratorFS_log_fuse_call( "release '%s' %d", path, (int)fi->fh );
+  GeneratorFS_log_fuse_call( "release '%s' fd=%d", path, (int)fi->fh );
   
   if( (int)fi->fh >= 0 ) {
     realname = get_fd_name( fi->fh );
@@ -386,6 +397,8 @@ int main( int argc, char **argv ) {
   for( i=0; i<argc; ++i ) {
     if( sscanf(argv[i],"--server-host=%128s",host) ) {
     } else if( sscanf(argv[i],"--server-port=%d",&port) ) {
+    } else if( strcmp("--moar-debug",argv[i]) == 0 ) {
+      moar_debug = 1;
     } else {
       fuse_opt_add_arg( &args, argv[i] );
     }
