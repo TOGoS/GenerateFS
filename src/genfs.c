@@ -298,8 +298,13 @@ static int GeneratorFS_write( const char *path, const char *buf, size_t size,
     } else if( z < size ) {
       warn( "Only wrote %d of %d bytes to '%s', fd=%d", z, size, path, (int)fi->fh );
     }
-    //warnx( "XX: write returning 0" );
-    return 0;
+    /* VERY IMPORTANT
+     * 
+     * We MUST return the number of bytes written (not 0!)
+     * or we will get Input/Output Error (-EIO) when we go to CLOSE
+     * the file!  Spent a day tracking this down.
+     */
+    return z;
   } else {
     warnx( "Tried to write to '%s' with file descriptor = %d", path, (int)fi->fh );
     return -EBADF;
