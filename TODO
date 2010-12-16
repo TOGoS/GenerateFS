@@ -1,3 +1,9 @@
 - Implement unlink (delete file)
 - Figure out why getting I/O Error while minecraft server tries to
   'check session lock', which apparently involves writing to some file
+
+
+
+* genfs: Error opening real file '/home/tog/proj/TMCMG/gfsdata/DIM-0/balh.txt': No such file or directory
+  This happens because we need to CREATE that directory before we can open a file in it!
+  - doing server-side for now
