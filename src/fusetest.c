@@ -28,7 +28,7 @@ static int fusetest_getattr( const char *path, struct stat *stbuf ) {
     stbuf->st_nlink = 2;
     stbuf->st_size = strlen(hello_str);
     return 0;
-  } else if( strcmp(path,"/bar") == 0 ) {
+  } else if( strcmp(path,"/bartest.txt") == 0 ) {
     if( barexists ) {
       stbuf->st_mode = S_IFREG | 0644;
       stbuf->st_nlink = 1;
@@ -64,7 +64,7 @@ static int fusetest_open( const char *path, struct fuse_file_info *fi ) {
     } else {
       return 0;
     }
-  } else if( strcmp(path,"/bar") == 0 ) {
+  } else if( strcmp(path,"/bartest.txt") == 0 ) {
     if( barexists ) {
       return 0;
     } else {
@@ -87,7 +87,7 @@ static int fusetest_read( const char *path, char *buf, size_t size,
       size = 0;
     }
     return size;
-  } else if( strcmp(path,"/bar") == 0 ) {
+  } else if( strcmp(path,"/bartest.txt") == 0 ) {
     len = barlength;
     if( offset < len ) {
       size = len-offset;
@@ -102,7 +102,7 @@ static int fusetest_read( const char *path, char *buf, size_t size,
 }
 
 static int fusetest_create( const char *path, mode_t mode, struct fuse_file_info *fi ) {
-  if( strcmp(path,"/bar") == 0 ) {
+  if( strcmp(path,"/bartest.txt") == 0 ) {
     barexists = 1;
     barlength = 0;
     return fusetest_open( path, fi );
@@ -112,7 +112,7 @@ static int fusetest_create( const char *path, mode_t mode, struct fuse_file_info
 }
 
 static int fusetest_truncate( const char *path, off_t offset, struct fuse_file_info *fi ) {
-  if( strcmp(path,"/bar") == 0 ) {
+  if( strcmp(path,"/bartest.txt") == 0 ) {
     barlength = 0;
     return 0;
   } else {
@@ -123,7 +123,7 @@ static int fusetest_truncate( const char *path, off_t offset, struct fuse_file_i
 static int fusetest_write( const char *path, char *buf, size_t size,
 			   off_t offset, struct fuse_file_info *fi ) {
   size_t len;
-  if( strcmp(path,"/bar") == 0 ) {
+  if( strcmp(path,"/bartest.txt") == 0 ) {
     if( barlength < sizeof bartext ) {
       if( barlength + size < sizeof bartext ) {
 	len = size;

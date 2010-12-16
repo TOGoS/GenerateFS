@@ -9,7 +9,9 @@ end
 
 def test_write( file, text )
   #STDERR.puts "open in truncate mode..."
-  open(file,'w') { |s| s.write text }
+  fh = open(file,'w')
+  fh.write text
+  fh.close
   if File.size(file) != text.length
     phail "Expected size of written file to be #{text.length}, but was #{File.size(file)}"
   end
@@ -25,7 +27,9 @@ def test_append( file, text )
   end
   origsize = File.size( file )
   #STDERR.puts "open in append mode..."
-  open(file,'a') { |s| s.write text }
+  fh = open(file,'a')
+  fh.write text
+  fh.close
   expectednewsize = origsize + text.length
   if File.size(file) != expectednewsize
     phail "Expected size of written file to be #{expectednewsize} (#{origsize} + #{text.length}), but was #{File.size(file)}"
@@ -43,8 +47,11 @@ end
 Thread.abort_on_exception = true
 
 debug = false
+shell = nil
+moar_debug = false
 filesystem = nil
 usetestserver = false
+useextserver = false
 mountpoint = nil
 host = '127.0.0.1'
 port = 23823
@@ -54,14 +61,20 @@ while arg = args.shift
   case arg
   when '-debug'
     debug = true
+  when '-moar-debug'
+    moar_debug = true
   when '-host'
     host = args.shift
   when '-port'
     port = args.shift.to_i
   when '-use-testserver'
     usetestserver = true
+  when '-use-extserver'
+    useextserver = true
   when '-fs'
     filesystem = args.shift
+  when '-shell'
+    shell = args.shift
   when /^[^-]/
     mountpoint = arg
   else
@@ -85,9 +98,8 @@ if usetestserver
   fuseargs << "--server-host=#{host}"
   fuseargs << "--server-port=#{port}"
 end
-if debug
-  fuseargs << '-d'
-end
+fuseargs << '-d' if debug
+fuseargs << '--moar-debug' if moar_debug
 fuseargs << '-f'
 fuseargs << mountpoint
 
@@ -111,21 +123,28 @@ begin
     exec filesystem,*fuseargs
   end
   sleep 0.25 # give it time to start...
-  
-  barfile = "#{mountpoint}/bar"
-  
-  if File.exist? barfile
-    phail "#{barfile} already exists, but was expected not to."
+ 
+  if shell
+    if shell
+      system shell
+    end
+  else
+    barfile = "#{mountpoint}/bartest.txt"
+    unless useextserver
+      if File.exist? barfile
+        phail "#{barfile} already exists, but was expected not to."
+      end
+    end
+    
+    # Test create new file
+    test_write( barfile, "Hello, world!" )
+    
+    # Test rewrite the file
+    test_write( barfile, "Hello, world!" )
+    
+    # Test appending to the file
+    test_append( barfile, "Goop Mah Scoop" )
   end
-  
-  # Test create new file
-  test_write( barfile, "Hello, world!" )
-  
-  # Test rewrite the file
-  test_write( barfile, "Hello, world!" )
-
-  # Test appending to the file
-  test_append( barfile, "Goop Mah Scoop" )
 ensure
   if serverpid
     #STDERR.puts "Stopping server..."
