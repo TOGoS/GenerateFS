@@ -207,6 +207,9 @@ module TOGoS ; module GeneratorFS
               else
                 cs.write_does_not_exist
               end
+            when 'DIE'
+              cs.write_line "OK-SHUTTING-DOWN"
+              exit 0
             else
               cs.write_client_error "Unrecognised command: #{loine[0].inspect}"
             end
